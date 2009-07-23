@@ -41,6 +41,10 @@ Adapters.RhinoMySQL = function RhinoMySQL(conn){
                 this.executeSQL('ROLLBACK');
                 throw e;
             }
+        },
+        quoteIdentifier: function quoteIdentifier(name)
+        {
+          return "`" + name + "`";
         }
     });
 };
@@ -63,7 +67,8 @@ Adapters.RhinoMySQL.connect = function connect(options)
         NAME: 'test'
     }, options);
     
-    var conn = java.sql.DriverManager.getConnection("jdbc:mysql://"+options.HOST+"/"+options.NAME+"?user="+options.USER+"&password="+options.PASS);
+    java.lang.Class.forName("com.mysql.jdbc.Driver").newInstance();
+    var conn = java.sql.DriverManager.getConnection("jdbc:mysql://"+options.HOST+":"+options.PORT+"/"+options.NAME+"?user="+options.USER+"&password="+options.PASS);
     
     return new Adapters.RhinoMySQL(conn);
 };

@@ -50,6 +50,7 @@
             "src/active_record/adapters/support/sql.js",
             "src/active_record/adapters/support/sqlite.js",
             "src/active_record/adapters/in_memory.js",
+            "src/active_record/adapters/support/mysql.js",
             "src/active_record/adapters/rhino_jdbc.js",
             "src/active_record/adapters/rhino_mysql.js",
             "src/active_record/adapters/auto.js",
