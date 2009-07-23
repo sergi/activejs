@@ -32,7 +32,12 @@
  */
 var ActiveSupport = null;
 
+if(typeof exports != "undefined"){
+    exports.ActiveSupport = ActiveSupport;
+}
+
 (function(global_context){
+
 ActiveSupport = {
     /**
      * Returns the global context object (window in most implementations).
@@ -48,6 +53,7 @@ ActiveSupport = {
      * context) does not contain the class, but does have a __noSuchMethod__
      * property, it will attempt to call context[class_name]() to trigger
      * the __noSuchMethod__ handler.
+     * @alias ActiveSupport.getClass
      * @param {String} class_name
      * @param {Object} context
      * @return {Mixed}
@@ -83,15 +89,62 @@ ActiveSupport = {
     {
         if(typeof(Jaxer) !== 'undefined')
         {
+            if (typeof Jaxer.console !== 'undefined') {
+                console.log.apply(console, arguments || []);
+            }
             Jaxer.Log.info.apply(Jaxer.Log,arguments || []);
         }
-        else if(typeof(air) !== 'undefined')
+        if(typeof(air) !== 'undefined')
         {
             air.Introspector.Console.log.apply(air.Introspector.Console,arguments || []);
         }
-        else if(typeof(console) !== 'undefined')
+        if(typeof(console) !== 'undefined')
         {
             console.log.apply(console,arguments || []);
+        }
+    },
+    /**
+     * Creates an Error object (but does not throw it).
+     * @alias ActiveSupport.createError
+     * @param {String} message
+     * @return {null}
+     */
+    createError: function createError(message)
+    {
+        return new Error(message);
+    },
+    /**
+     * @alias ActiveSupport.logErrors
+     * @property {Boolean}
+     */
+    logErrors: true,
+    /**
+     * @alias ActiveSupport.throwErrors
+     * @property {Boolean}
+     */
+    throwErrors: true,
+    /**
+     * Accepts a variable number of arguments, that may be logged and thrown in
+     * @alias ActiveSupport.throwError
+     * @param {Error} error
+     * @return {null}
+     */
+    throwError: function throwError(error)
+    {
+        if(typeof(error) == 'string')
+        {
+            error = new Error(error);
+        }
+        var error_arguments = ActiveSupport.arrayFrom(arguments).slice(1);
+        if(ActiveSupport.logErrors)
+        {
+            ActiveSupport.log.apply(ActiveSupport,['Throwing error:',error].concat(error_arguments));
+        }
+        if(ActiveSupport.throwErrors)
+        {
+            var e = ActiveSupport.clone(error);
+            e.message = e.message + error_arguments.join(',');
+            throw e;
         }
     },
     /**
@@ -114,6 +167,15 @@ ActiveSupport = {
             results[length] = object[length];
         }
         return results;
+    },
+    /**
+     * @alias ActiveSupport.isArray
+     * @param {mixed} object
+     * @return {Boolean}
+     */
+    isArray: function isArray(object)
+    {
+        return object && typeof(object) == 'object' && 'length' in object && 'splice' in object && 'join' in object;
     },
     /**
      * Emulates Array.indexOf for implementations that do not support it.
@@ -146,7 +208,8 @@ ActiveSupport = {
      * @param {mixed} item to remove
      * @return {Array}
      */
-    without: function without(arr){
+    without: function without(arr)
+    {
         var values = ActiveSupport.arrayFrom(arguments).slice(1);
         var response = [];
         for(var i = 0 ; i < arr.length; i++)
@@ -159,30 +222,25 @@ ActiveSupport = {
         return response;
     },
     /**
-     * Emulates Prototype's Function.prototype.bind
+     * Emulates Prototype's Function.prototype.bind. Unlike Prototype's
+     * version you must explicitly use curry() to pass extra arguments
+     * to the bound function.
      * @alias ActiveSupport.bind
      * @param {Function} func
      * @param {Object} object
      *      object will be in scope as "this" when func is called.
      * @return {Function}
      */
-    bind: function bind(func, object)
+    bind: function bind(func,object)
     {
-        func.bind = function bind()
+        if(typeof(object) == 'undefined')
         {
-            if (arguments.length < 2 && typeof(arguments[0]) === "undefined")
-            {
-                return this;
-            }
-            var __method = this;
-            var args = ActiveSupport.arrayFrom(arguments);
-            var object = args.shift();
-            return function bound()
-            {
-                return __method.apply(object, args.concat(ActiveSupport.arrayFrom(arguments)));
-            };
+            return func;
+        }
+        return function bound()
+        {
+            return func.apply(object,arguments);
         };
-        return func.bind(object);
     },
     /**
      * Emulates Prototype's Function.prototype.curry.
@@ -192,20 +250,15 @@ ActiveSupport = {
      */
     curry: function curry(func)
     {
-        func.curry = function curry()
+        if(arguments.length == 1)
         {
-            if (!arguments.length)
-            {
-                return this;
-            }
-            var __method = this;
-            var args = ActiveSupport.arrayFrom(arguments);
-            return function curried()
-            {
-                return __method.apply(this, args.concat(ActiveSupport.arrayFrom(arguments)));
-            };
+            return func;
+        }
+        var args = ActiveSupport.arrayFrom(arguments).slice(1);
+        return function curried()
+        {
+            return func.apply(this,args.concat(ActiveSupport.arrayFrom(arguments)));
         };
-        return func.curry.apply(func, ActiveSupport.arrayFrom(arguments).slice(1));
     },
     /**
      * Returns a function wrapped around the original function.
@@ -228,13 +281,10 @@ ActiveSupport = {
      */
     wrap: function wrap(func,wrapper)
     {
-        func.wrap = function wrap(wrapper){
-            var __method = this;
-            return function wrapped(){
-                return wrapper.apply(this,[ActiveSupport.bind(__method,this)].concat(ActiveSupport.arrayFrom(arguments)));
-            };
+        return function wrapped()
+        {
+            wrapper.apply(this,[ActiveSupport.bind(func,this)].concat(ActiveSupport.arrayFrom(arguments)));
         };
-        return func.wrap(wrapper);
     },
     /**
      * Returns an array of keys from an object.
@@ -244,12 +294,12 @@ ActiveSupport = {
      */
     keys: function keys(object)
     {
-        var keysArray = [];
-        for (var property in object)
+        var keys_array = [];
+        for (var property_name in object)
         {
-            keysArray.push(property);
+            keys_array.push(property_name);
         }
-        return keysArray;
+        return keys_array;
     },
     /**
      * Emulates Prototype's String.prototype.underscore
@@ -260,8 +310,10 @@ ActiveSupport = {
     underscore: function underscore(str)
     {
         return str.replace(/::/g, '/').replace(/([A-Z]+)([A-Z][a-z])/g, function(match){
+            match = match.split("");
             return match[0] + '_' + match[1];
         }).replace(/([a-z\d])([A-Z])/g, function(match){
+            match = match.split("");
             return match[0] + '_' + match[1];
         }).replace(/-/g, '_').toLowerCase();
     },
@@ -272,7 +324,8 @@ ActiveSupport = {
      * @param {Boolean} [capitalize]
      * @return {String}
      */
-    camelize: function camelize(str, capitalize){
+    camelize: function camelize(str, capitalize)
+    {
         var camelized,
             parts = str.replace(/\_/g,'-').split('-'), len = parts.length;
         if (len === 1)
@@ -307,6 +360,17 @@ ActiveSupport = {
             return camelized;
         }
     },
+    /**
+     * Trim leading and trailing whitespace.
+     * @alias ActiveSupport.trim
+     * @param {String} str
+     * @return {String}
+     */
+    trim: function(str)
+    {
+        return (str || "").replace(/^\s+|\s+$/g,"");
+    },
+
     /**
      * Emulates Prototype's Object.extend
      * @alias ActiveSupport.extend
@@ -356,33 +420,6 @@ ActiveSupport = {
     {
         return typeof(value) === 'function' ? value() : value;
     },
-    
-    /**
-     * If it is the last argument of current function is a function, it will be
-     * returned. You can optionally specify the number of calls in the stack to
-     * look up.
-     * @alias ActiveSupport.block
-     * @param {Number} [levels]
-     * @return {mixed}
-     */
-    block: function block(args)
-    {
-        if(typeof(args) === 'number' || !args)
-        {
-            var up = arguments.callee;
-            for(var i = 0; i <= (args || 0); ++i)
-            {
-                up = up.caller;
-                if(!up)
-                {
-                    return false;
-                }
-            }
-            args = up.arguments;
-        }
-        return (args.length === 0 || typeof(args[args.length - 1]) !== 'function') ? false : args[args.length - 1];
-    },
-    
     /**
      * @alias ActiveSupport.synchronize
      */
@@ -496,11 +533,12 @@ ActiveSupport = {
                 "money",
                 "rice",
                 "information",
+				"info",
                 "equipment"
             ]
         },
         /**
-         * Generates an orginalized version of a number as a string (9th, 2nd, etc)
+         * Generates an ordinalized version of a number as a string (9th, 2nd, etc)
          * @alias ActiveSupport.Inflector.ordinalize
          * @param {Number} number
          * @return {String}
@@ -530,11 +568,11 @@ ActiveSupport = {
          */
         pluralize: function pluralize(word)
         {
-            var i;
+            var i, lc = word.toLowerCase();
             for (i = 0; i < ActiveSupport.Inflector.Inflections.uncountable.length; i++)
             {
                 var uncountable = ActiveSupport.Inflector.Inflections.uncountable[i];
-                if (word.toLowerCase === uncountable)
+                if (lc === uncountable)
                 {
                     return uncountable;
                 }
@@ -543,7 +581,7 @@ ActiveSupport = {
             {
                 var singular = ActiveSupport.Inflector.Inflections.irregular[i][0];
                 var plural = ActiveSupport.Inflector.Inflections.irregular[i][1];
-                if ((word.toLowerCase === singular) || (word === plural))
+                if ((lc === singular) || (lc === plural))
                 {
                     return plural;
                 }
@@ -557,6 +595,7 @@ ActiveSupport = {
                     return word.replace(regex, replace_string);
                 }
             }
+						return word;
         },
         /**
          * Generates a singular version of an english word.
@@ -564,12 +603,13 @@ ActiveSupport = {
          * @param {String} word
          * @return {String}
          */
-        singularize: function singularize(word) {
-            var i;
+        singularize: function singularize(word)
+        {
+            var i, lc = word.toLowerCase();
             for (i = 0; i < ActiveSupport.Inflector.Inflections.uncountable.length; i++)
             {
                 var uncountable = ActiveSupport.Inflector.Inflections.uncountable[i];
-                if (word.toLowerCase === uncountable)
+                if (lc === uncountable)
                 {
                     return uncountable;
                 }
@@ -578,9 +618,9 @@ ActiveSupport = {
             {
                 var singular = ActiveSupport.Inflector.Inflections.irregular[i][0];
                 var plural   = ActiveSupport.Inflector.Inflections.irregular[i][1];
-                if ((word.toLowerCase === singular) || (word === plural))
+                if ((lc === singular) || (lc === plural))
                 {
-                    return plural;
+                    return singular;
                 }
             }
             for (i = 0; i < ActiveSupport.Inflector.Inflections.singular.length; i++)
@@ -592,7 +632,20 @@ ActiveSupport = {
                     return word.replace(regex, replace_string);
                 }
             }
+            return word;
         }
+    },
+    /**
+     * Generates a JavaScript Date object from a MySQL DATETIME formatted
+     * string (yyyy-mm-dd HH:MM:ss).
+     * @alias ActiveSupport.dateFromDateTime
+     * @param {String} date_time
+     * @return {Date}
+     */
+    dateFromDateTime: function dateFromDateTime(date_time)
+    {
+        var parts = date_time.replace(/^([0-9]{2,4})-([0-1][0-9])-([0-3][0-9]) (?:([0-2][0-9]):([0-5][0-9]):([0-5][0-9]))?$/,"$1 $2 $3 $4 $5 $6").split(' ');
+        return new Date(parts[0],parts[1]-1,parts[2],parts[3],parts[4],parts[5]);
     },
     /*
      * Date Format 1.2.2
@@ -600,6 +653,8 @@ ActiveSupport = {
      * MIT license
      * Includes enhancements by Scott Trenda <scott.trenda.net> and Kris Kowal <cixar.com/~kris.kowal/>
      *
+     * http://blog.stevenlevithan.com/archives/date-time-format
+     * 
      * Accepts a date, a mask, or a date and a mask.
      * Returns a formatted version of the given date.
      * The date defaults to the current date/time.
@@ -607,11 +662,19 @@ ActiveSupport = {
      */
      
     /**
+     * See: http://blog.stevenlevithan.com/archives/date-time-format
+     * 
+     * If convert_to_local_time is true the Date object will be assume to be GMT
+     * and be converted from GMT to the local time. Local time will be the local
+     * time of the server if running server side, or local time of the client
+     * side if running in the browser.
      * @alias ActiveSupport.dateFormat
      * @param {Date} date
      * @param {String} format
-     * @param {Boolean} utc
+     * @param {Boolean} [convert_to_local_time]
      * @return {String}
+     * @example
+     *     ActiveSupport.dateFormat('yyyy-mm-dd HH:MM:ss');
      */
     dateFormat: function date_format_wrapper()
     {
@@ -640,7 +703,7 @@ ActiveSupport = {
             // Passing date through Date applies Date.parse, if necessary
             date = date ? new Date(date) : new Date();
             if (isNaN(date)) {
-                throw new SyntaxError("invalid date");
+                return ActiveSupport.throwError(new SyntaxError("invalid date"));
             }
 
             mask = String(dF.masks[mask] || mask || dF.masks["default"]);
@@ -763,7 +826,7 @@ ActiveSupport = {
             var response = '';
             if(typeof(value) === 'string' || typeof(value) === 'number' || typeof(value) === 'boolean')
             {
-                response = '<![CDATA[' + (new String(value)).toString() + ']]>';
+                response = '<![CDATA[' + String(value) + ']]>';
             }
             else if(typeof(value) === 'object')
             {
@@ -772,7 +835,7 @@ ActiveSupport = {
                 {
                     for(var i = 0; i < value.length; ++i)
                     {
-                        response += wrap_value(ActiveSupport.Inflector.singularize(key_name),value[i],indent + 1);
+                        response += wrap_value(ActiveSupport.Inflector.singularize(key_name) || key_name,value[i],indent + 1);
                     }
                 }
                 else
@@ -956,7 +1019,7 @@ ActiveSupport = {
         //use native support if available
         if(global_context && 'JSON' in global_context && 'stringify' in global_context.JSON && 'parse' in global_context.JSON)
         {
-          return global_context.JSON;
+            return global_context.JSON;
         }
         
         function f(n) {
@@ -971,11 +1034,6 @@ ActiveSupport = {
                  f(this.getUTCHours())     + ':' +
                  f(this.getUTCMinutes())   + ':' +
                  f(this.getUTCSeconds())   + 'Z';
-        };
-        String.prototype.toJSON =
-        Number.prototype.toJSON =
-        Boolean.prototype.toJSON = function (key) {
-            return this.valueOf();
         };
         var cx = /[\u0000\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
             escapeable = /[\\\"\x00-\x1f\x7f-\x9f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
@@ -1015,7 +1073,7 @@ ActiveSupport = {
                 partial,
                 value = holder[key];
             if (value && typeof value === 'object' &&
-                    typeof value.toJSON === 'function') {
+                    typeof value.toJSON === 'function' && !ActiveSupport.isArray(value)) {
                 value = value.toJSON(key);
             }
             if (typeof rep === 'function') {
@@ -1023,10 +1081,11 @@ ActiveSupport = {
             }
             switch (typeof value) {
             case 'string':
-                return quote(value);
+                return quote(value.valueOf());
             case 'number':
-                return isFinite(value) ? String(value) : 'null';
+                return isFinite(value) ? String(value.valueOf()) : 'null';
             case 'boolean':
+                return String(value.valueOf());
             case 'null':
                 return String(value);
             case 'object':
@@ -1099,7 +1158,7 @@ ActiveSupport = {
                 if (replacer && typeof replacer !== 'function' &&
                         (typeof replacer !== 'object' ||
                          typeof replacer.length !== 'number')) {
-                    throw new Error('JSON.stringify');
+                    return ActiveSupport.throwError(new Error('JSON.stringify'));
                 }
                 return str('', {'': value});
             },
@@ -1140,7 +1199,7 @@ ActiveSupport = {
                     return typeof reviver === 'function' ?
                         walk({'': j}, '') : j;
                 }
-                throw new SyntaxError('JSON.parse');
+                return ActiveSupport.throwError(new SyntaxError('JSON.parse'));
             }
         };
     }()
@@ -1151,6 +1210,10 @@ ActiveSupport = {
 /**
  * @namespace {ActiveEvent}
  * @example
+ * 
+ * ActiveEvent
+ * ===========
+ * 
  * ActiveEvent allows you to create observable events, and attach event
  * handlers to any class or object.
  *
@@ -1171,11 +1234,11 @@ ActiveSupport = {
  * the same name as the method using makeObservable().
  * 
  *     var Message = function(){};
+ *     ActiveEvent.extend(Message);
  *     Message.prototype.send = function(text){
  *         //message sending code here...
  *         this.notify('sent',text);
  *     };
- *     ActiveEvent.extend(Message);
  * 
  *     //make an existing method observable
  *     var observable_hash = new Hash({});
@@ -1203,7 +1266,8 @@ ActiveSupport = {
  *     observable_hash.observe('set',function(key,value){
  *         console.log('observable_hash.set: ' + key + '=' + value);
  *     });
- *     observable_hash.observeOnce(function(key,value){
+ 
+ *     observable_hash.observeOnce('set',function(key,value){
  *         //this will only be called once
  *     });
  * 
@@ -1240,26 +1304,26 @@ ActiveSupport = {
  *     
  *     m.stopObserving('send',observer);
  *     
- *     m.send('test'); //returned true</code></pre>
+ *     m.send('test'); //returned true
  * 
  * Object.options
  * --------------
  * If an object has an options property that contains a callable function with
  * the same name as an event triggered with <b>notify()</b>, it will be
- * treated just like an instance observer. So the falling code is equivalent.
+ * treated just like an instance observer. So the following code is equivalent:
  *
  *     var rating_one = new Control.Rating('rating_one',{  
  *         afterChange: function(new_value){}    
  *     });  
  *     
  *     var rating_two = new Control.Rating('rating_two');  
- *     rating_two.observe('afterChange',function(new_value){});</code></pre>
+ *     rating_two.observe('afterChange',function(new_value){});
  * 
  * MethodCallObserver
  * ------------------
  * The makeObservable() method permanently modifies the method that will
  * become observable. If you need to temporarily observe a method call without
- * permanently modifying it, use the observeMethod(). Pass the name of the
+ * permanently modifying it, use observeMethod(). Pass the name of the
  * method to observe and the observer function will receive all of the
  * arguments passed to the method. An ActiveEvent.MethodCallObserver object is
  * returned from the call to observeMethod(), which has a stop() method on it.
@@ -1267,30 +1331,34 @@ ActiveSupport = {
  * can optionally pass another function to observeMethod(), if you do the
  * MethodCallObserver will be automatically stopped when that function
  * finishes executing.
- *
- *   var h = new Hash({});
- *   ActiveEvent.extend(h);
- *   
- *   var observer = h.observeMethod('set',function(key,value){
- *       console.log(key + '=' + value);
- *   });
- *   h.set('a','one');
- *   h.set('a','two');
- *   observer.stop();
- *   
- *   //console now contains:
- *   //"a = one"
- *   //"b = two"
- *   
- *   //the following does the same as above
- *   h.observeMethod('set',function(key,value){
- *       console.log(key + '=' + value);
- *   },function(){
- *       h.set('a','one');
- *       h.set('b','two');
- *   });
+ * 
+ *     var h = new Hash({});
+ *     ActiveEvent.extend(h);
+ *     
+ *     var observer = h.observeMethod('set',function(key,value){
+ *         console.log(key + '=' + value);
+ *     });
+ *     h.set('a','one');
+ *     h.set('a','two');
+ *     observer.stop();
+ *     
+ *     //console now contains:
+ *     //"a = one"
+ *     //"b = two"
+ *     
+ *     //the following does the same as above
+ *     h.observeMethod('set',function(key,value){
+ *         console.log(key + '=' + value);
+ *     },function(){
+ *         h.set('a','one');
+ *         h.set('b','two');
+ *     });
  */
 var ActiveEvent = null;
+
+if(typeof exports != "undefined"){
+    exports.ActiveEvent = ActiveEvent;
+}
 
 /**
  * @namespace {ActiveEvent.ObservableObject} After calling
@@ -1438,7 +1506,12 @@ ActiveEvent.extend = function extend(object){
      * @return {mixed} Array of return values, or false if the event was
      *  stopped by an observer.
      */
-    object.notify = function notify(event_name){
+    object.notify = function notify(event_name)
+    {
+        if(!this._observers || !this._observers[event_name] || (this._observers[event_name] && this._observers[event_name].length == 0))
+        {
+            return [];
+        }
         this._objectEventSetup(event_name);
         var collected_return_values = [];
         var args = ActiveSupport.arrayFrom(arguments).slice(1);
@@ -1465,18 +1538,31 @@ ActiveEvent.extend = function extend(object){
         object.prototype.stopObserving = object.stopObserving;
         object.prototype.observeOnce = object.observeOnce;
         
-        object.prototype.notify = function notify(event_name)
+        object.prototype.notify = function notify_instance(event_name)
         {
-            if(object.notify)
+            if(
+              (!object._observers || !object._observers[event_name] || (object._observers[event_name] && object._observers[event_name].length == 0)) &&
+              (!this.options || !this.options[event_name]) &&
+              (!this._observers || !this._observers[event_name] || (this._observers[event_name] && this._observers[event_name].length == 0))
+            )
             {
-                var args = ActiveSupport.arrayFrom(arguments).slice(1);
-                args.unshift(this);
-                args.unshift(event_name);
-                object.notify.apply(object,args);
+                return [];
             }
-            this._objectEventSetup(event_name);
             var args = ActiveSupport.arrayFrom(arguments).slice(1);
             var collected_return_values = [];
+            if(object.notify)
+            {
+                object_args = ActiveSupport.arrayFrom(arguments).slice(1);
+                object_args.unshift(this);
+                object_args.unshift(event_name);
+                var collected_return_values_from_object = object.notify.apply(object,object_args);
+                if(collected_return_values_from_object === false)
+                {
+                    return false;
+                }
+                collected_return_values = collected_return_values.concat(collected_return_values_from_object);
+            }
+            this._objectEventSetup(event_name);
             var response;
             if(this.options && this.options[event_name] && typeof(this.options[event_name]) === 'function')
             {
@@ -1551,6 +1637,14 @@ ObservableHash.prototype.get = function get(key)
     return this._object[key];
 };
 
+ObservableHash.prototype.unset = function unset(key)
+{
+    this.notify('unset',key);
+    var value = this._object[key];
+    delete this._object[key];
+    return value;
+};
+
 ObservableHash.prototype.toObject = function toObject()
 {
     return this._object;
@@ -1562,7 +1656,11 @@ ActiveEvent.ObservableHash = ObservableHash;
 
 })();
  
-ActiveRoutes = null;
+var ActiveRoutes = null;
+
+if(typeof exports != "undefined"){
+    exports.ActiveRoutes = ActiveRoutes;
+}
 
 (function() {
  
@@ -1574,6 +1672,10 @@ ActiveRoutes = null;
  * @param {Object} [options]
  * @return {ActiveRoutes}
  * @example
+ *
+ * ActiveRoutes
+ * ============
+ * 
  * ActiveRoutes maps URI strings to method calls, and visa versa. It shares a
  * similar syntax to Rails Routing, but is framework agnostic and can map
  * calls to any type of object. Server side it can be used to map requests for
@@ -1581,18 +1683,6 @@ ActiveRoutes = null;
  * to provide deep linking and back button / history support for your Ajax
  * application.
  * 
- * Options
- * -------
- * You can pass a hash of options as the third parameter to the ActiveRoutes
- * constructor. This hash can contain the following keys:
- * 
- * - base: default '', the default path / url prefix to be used in a generated url
- * - classSuffix: default '' if it was "Controller", calling "/blog/post/5" would call BlogController.post instead of Blog.post
- * - dispatcher: default ActiveRoutes.prototype.defaultDispatcher, the dispatcher function to be called when dispatch() is called and a route is found
- * - camelizeObjectName: default true, if true, trying to call "blog_controller" through routes will call "BlogController"
- * - camelizeMethodName: default true, if true, trying to call "my_method_name" through routes will call "myMethodName"
- * - camelizeGeneratedMethods: default true, will export generated methods into the scope as "articleUrl" instead of "article_url"
- *
  * Declaring Routes
  * ----------------
  * Wether declared in the constructor, or with addRoute(), routes can have up
@@ -1616,6 +1706,18 @@ ActiveRoutes = null;
  *       ['/:object/:method']
  *     ],Application);
  * 
+ * Options
+ * -------
+ * You can pass a hash of options as the third parameter to the ActiveRoutes
+ * constructor. This hash can contain the following keys:
+ * 
+ * - base: default '', the default path / url prefix to be used in a generated url
+ * - classSuffix: default '' if it was "Controller", calling "/blog/post/5" would call BlogController.post instead of Blog.post
+ * - dispatcher: default ActiveRoutes.prototype.defaultDispatcher, the dispatcher function to be called when dispatch() is called and a route is found
+ * - camelizeObjectName: default true, if true, trying to call "blog_controller" through routes will call "BlogController"
+ * - camelizeMethodName: default true, if true, trying to call "my_method_name" through routes will call "myMethodName"
+ * - camelizeGeneratedMethods: default true, will export generated methods into the scope as "articleUrl" instead of "article_url"
+ * 
  * Catch All Routes
  * ----------------
  * If you want to route all requests below a certain path to a given method,
@@ -1634,7 +1736,7 @@ ActiveRoutes = null;
  * parameter will be checked against. Each value checked by a regular
  * expression or function is always a string.
  * 
- *     route_set.addRoute('/article/:article_id/:comment_id,{
+ *     route_set.addRoute('/article/:article_id/:comment_id',{
  *         article_id: /^\d+$/,
  *         comment_id: function(comment_id){
  *             return comment_id.match(/^\d+$/);
@@ -1683,7 +1785,7 @@ ActiveRoutes = null;
  * accessible with the "history" property, and is traversable with the
  * next() and back() methods.
  */
-ActiveRoutes = function ActiveRoutes(routes,scope,options)
+ActiveRoutes = function initialize(routes,scope,options)
 {
     this.initialized = false;
     this.error = false;
@@ -1707,7 +1809,10 @@ ActiveRoutes = function ActiveRoutes(routes,scope,options)
     var i;
     for(i = 0; i < routes.length; ++i)
     {
-        this.addRoute.apply(this,routes[i]);
+        if(routes[i]) //fix for accidental trailing commas in IE arrays
+        {
+            this.addRoute.apply(this,routes[i]);
+        }
     }
     var current_route_set = this;
     this.scope[this.options.camelizeGeneratedMethods ? 'urlFor' : 'url_for'] = function generatedUrlFor(){
@@ -1825,15 +1930,15 @@ ActiveRoutes.prototype.addRoute = function addRoute()
     };
     if(!Validations.hasPath(route))
     {
-        throw Errors.NoPathInRoute;
+        return ActiveSupport.throwError(Errors.NoPathInRoute);
     }
     if(!Validations.hasObject(route))
     {
-        throw Errors.NoObjectInRoute + route.path;
+        return ActiveSupport.throwError(Errors.NoObjectInRoute,route.path);
     }
     if(!Validations.hasMethod(route))
     {
-        throw Errors.NoMethodInRoute + route.path;
+        return ActiveSupport.throwError(Errors.NoMethodInRoute,route.path);
     }
     if(this.initialized)
     {
@@ -1865,14 +1970,14 @@ ActiveRoutes.normalizePath = function normalizePath(path)
 };
 
 var Errors = {
-    NoPathInRoute: 'No path was specified in the route',
-    NoObjectInRoute: 'No :object was specified in the route: ',
-    NoMethodInRoute: 'No :method was specified in the route: ',
-    ObjectDoesNotExist: 'The following object does not exist: ',
-    MethodDoesNotExist: 'The following method does not exist: ',
-    MethodNotCallable: 'The following method is not callable: ',
-    NamedRouteDoesNotExist: 'The following named route does not exist: ',
-    UnresolvableUrl: 'Could not resolve the url: '
+    NoPathInRoute: ActiveSupport.createError('No path was specified in the route'),
+    NoObjectInRoute: ActiveSupport.createError('No :object was specified in the route: '),
+    NoMethodInRoute: ActiveSupport.createError('No :method was specified in the route: '),
+    ObjectDoesNotExist: ActiveSupport.createError('The following object does not exist: '),
+    MethodDoesNotExist: ActiveSupport.createError('The following method does not exist: '),
+    MethodNotCallable: ActiveSupport.createError('The following method is not callable: '),
+    NamedRouteDoesNotExist: ActiveSupport.createError('The following named route does not exist: '),
+    UnresolvableUrl: ActiveSupport.createError('Could not resolve the url: ')
 };
 ActiveRoutes.Errors = Errors;
 
@@ -1936,7 +2041,7 @@ ActiveRoutes.prototype.match = function(path){
     var original_path = path;
     this.error = false;
     //make sure the path is a copy
-    path = ActiveRoutes.normalizePath((new String(path)).toString());
+    path = ActiveRoutes.normalizePath(String(path));
     //handle extension
     var extension = path.match(/\.([^\.]+)$/);
     if(extension)
@@ -1963,7 +2068,6 @@ ActiveRoutes.prototype.match = function(path){
         var route_path_components = route.path.split('/');
         var route_path_length = route_path_components.length;
         var valid = true;
-        
         //length of path components must match, but must treat "/blog", "/blog/action", "/blog/action/id" the same
         if(path_length <= route_path_length || route_path_components[route_path_components.length - 1] == '*'){
             for(var ii = 0; ii < route_path_components.length; ++ii)
@@ -1971,19 +2075,21 @@ ActiveRoutes.prototype.match = function(path){
                 var path_component = path_components[ii];
                 var route_path_component = route_path_components[ii];
                 //catch all
-                if(route_path_component[0] == '*')
+                if(route_path_component.charAt(0) == '*')
                 {
                     route.params.path = path_components.slice(ii);
                     return this.checkAndCleanRoute(route,original_path); 
                 }
                 //named component
-                else if(route_path_component[0] == ':')
+                else if(route_path_component.charAt(0) == ':')
                 {
                     var key = route_path_component.substr(1);
                     if(path_component && route.params.requirements && route.params.requirements[key] &&
                         !(typeof(route.params.requirements[key]) == 'function'
-                            ? route.params.requirements[key]((new String(path_component).toString()))
-                            : path_component.match(route.params.requirements[key])))
+                            ? route.params.requirements[key](String(path_component))
+                            : path_component.match(route.params.requirements[key])
+                        )
+                    )
                     {
                         valid = false;
                         break;
@@ -2037,11 +2143,11 @@ ActiveRoutes.prototype.dispatch = function dispatch(path)
         {
             if(this.error)
             {
-                throw this.error;
+                return ActiveSupport.throwError(this.error);
             }
             else
             {
-                throw Errors.UnresolvableUrl + path;
+                return ActiveSupport.throwError(Errors.UnresolvableUrl,path);
             }
         }
     }
@@ -2135,7 +2241,7 @@ ActiveRoutes.prototype.cleanPath = function cleanPath(path,params,only_path)
         path = path.replace(/\/?\:method/,'');
     }
     path = path.replace(/\/?index$/,'');
-    if(path[0] != '/')
+    if(path.charAt(0) != '/')
     {
         path = '/' + path;
     }
@@ -2150,11 +2256,11 @@ ActiveRoutes.performParamSubstitution = function performParamSubstitution(path,r
         if(path.match(':' + p) && params[p])
         {
             if(route.params.requirements && route.params.requirements[p]){
-                if(typeof(route.params.requirements[p]) == 'function' && !route.params.requirements[p]((new String(params[p]).toString())))
+                if(typeof(route.params.requirements[p]) == 'function' && !route.params.requirements[p](String(params[p])))
                 {
                     continue;
                 }
-                else if(!route.params.requirements[p]((new String(params[p]).toString())))
+                else if(!route.params.requirements[p].exec(String(params[p])))
                 {
                     continue;
                 }
@@ -2196,7 +2302,7 @@ ActiveRoutes.prototype.urlFor = function urlFor(params)
         }
         if(found === false)
         {
-            throw Errors.NamedRouteDoesNotExistError + params;
+            return ActiveSupport.throwError(Errors.NamedRouteDoesNotExistError,params);
         }
         else
         {
@@ -2310,11 +2416,18 @@ ActiveRoutes.prototype.generateMethodsForRoute = function generateMethodsForRout
  
 var ActiveRecord = null;
 
+if(typeof exports != "undefined"){
+    exports.ActiveRecord = ActiveRecord;
+}
+
 (function() {
 
 /**
  * @namespace {ActiveRecord}
  * @example
+ * 
+ * ActiveRecord
+ * ============
  * 
  * ActiveRecord.js is a cross browser, cross platform, stand-alone object
  * relational mapper. It shares a very similar vocabulary to the Ruby
@@ -2357,7 +2470,7 @@ var ActiveRecord = null;
  * If you are using a browser or platform that does not have access to a SQL
  * database, you can use the InMemory adapter which will store your objects
  * in memory. All features (including find by SQL) will still work, but you
- * will not be able to use the Migration features, since there are no table
+ * will not be able to use the Migration features, since there is no table
  * schema. Since your objects will not persist, the second parameter to
  * establish a connection is a hash with the data you would like to use
  * in this format: {table_name: {id: row}}. The InMemory adapter will also
@@ -2381,24 +2494,13 @@ var ActiveRecord = null;
  *     
  * Defining Your Model
  * -------------------
- * The only rule for all ActiveRecord classes is that the related table in the
- * database must have an auto incrementing 'id' property. If you are working
- * with a database table that already exists, you can create a model psuedo-class
- * using the create() method, passing the table name as the first parameter, and
- * any methods you want to define on that class as the second paramter:
- * 
- *     var Post = ActiveRecord.create('posts',{
- *         getWordCount: function(){
- *             return this.get('text').split(/\s+/).length;
- *         }
- *     });
- * 
- * This both returns the class and stores it inside ActiveRecord.Models.Post. If
- * the table for your model does not yet exist you can use the define() method
- * which takes the desired table as the first argument, the fields as the second
- * and the methods as the third:
- * 
- *     var User = ActiveRecord.define('users',{
+ * ActiveRecord classes are created using the ActiveRecord.create method which
+ * takes three arguments: the name of the table that the class will reference,
+ * a field definition hash, and optionally a hash of instance methods that
+ * will be added to the class. If the table does not exist it will be
+ * automically created.
+ *
+ *     var User = ActiveRecord.create('users',{
  *         username: '',
  *         password: '',
  *         post_count: 0,
@@ -2407,8 +2509,8 @@ var ActiveRecord = null;
  *             value: ''
  *         }
  *     },{
- *         getFormattedProfile: function(){
- *             return Markdown.format(this.get('profile'));
+ *         getProfileWordCount: function(){
+ *             return this.get('profile').split(/\s+/).length;
  *         }
  *     });
  * 
@@ -2523,10 +2625,10 @@ var ActiveRecord = null;
  *             current_count = updated_count;
  *         }
  *     });
- *     var new_user = User.create({...}); //current_count incremented
+ *     var new_user = User.create({params}); //current_count incremented
  *     new_user.destroy();  //current_count decremented
  *     stop();
- *     User.create({...}); //current_count unchanged
+ *     User.create({params}); //current_count unchanged
  *
  * Lifecycle
  * ---------
@@ -2586,7 +2688,7 @@ var ActiveRecord = null;
  *     
  * To observe a given event on all models, you can do the following: 
  * 
- *     ActiveRecord.observe('created',function(model_class,model_instance){});
+ *     ActiveRecord.observe('afterCreate',function(model_class,model_instance){});
  *     
  * afterFind works differently than all of the other events. It is only available
  * to the model class, not the instances, and is called only when a result set is
@@ -2660,7 +2762,7 @@ var ActiveRecord = null;
  *     var u = User.find(5);
  *     u.getCommentList().length;
  *     u.createComment({title: 'comment title'});
- *
+ * 
  * You can name the relationship (and thus the generate methods) by passing
  * a name parameter:
  * 
@@ -2678,7 +2780,8 @@ var ActiveRecord = null;
  * - ActsAsList
  * - ActsAsTree
  * - hasMany :through (which will likely be the only supported many to many relationship)
-*/
+ * 
+ */
 ActiveRecord = {
     /**
      * Defaults to false.
@@ -2686,6 +2789,12 @@ ActiveRecord = {
      * @property {Boolean}
      */
     logging: false,
+    /**
+     * Will automatically create a table when create() is called. Defaults to true.
+     * @alias ActiveRecord.autoMigrate
+     * @property {Boolean}
+     */
+    autoMigrate: true,
     /**
      * Tracks the number of records created.
      * @alias ActiveRecord.internalCounter
@@ -2721,64 +2830,98 @@ ActiveRecord = {
      */
     InstanceMethods: {},
     /**
-     * Creates an ActiveRecord class, returning the class and storing it inside ActiveRecord.Models[model_name]. model_name is a singularized, capitalized form of table name.
+     * Creates an ActiveRecord class, returning the class and storing it inside
+     * ActiveRecord.Models[model_name]. model_name is a singularized,
+     * capitalized form of table name.
      * @example
      *     var User = ActiveRecord.create('users');
      *     var u = User.find(5);
      * @alias ActiveRecord.create
      * @param {String} table_name
-     * @param {Array} [methods]
-     * @param {Function} [readyCallback]
-     *      Must be specified if running in asynchronous mode.
+     * @param {Object} fields
+     *      Should consist of column name, default value pairs. If an empty
+     *      array or empty object is set as the default, any arbitrary data
+     *      can be set and will automatically be serialized when saved. To
+     *      specify a specific type, set the value to an object that contains
+     *      a "type" key, with optional "length" and "value" keys.
+     * @param {Object} [methods]
      * @return {Object}
      */
-    create: function create(table_name, methods)
+    create: function create(options, fields, methods)
     {
         if (!ActiveRecord.connection)
         {
-            throw ActiveRecord.Errors.ConnectionNotEstablished;
+            return ActiveSupport.throwError(ActiveRecord.Errors.ConnectionNotEstablished);
+        }
+        
+        if(typeof(options) === 'string')
+        {
+            options = {
+                tableName: options
+            };
         }
 
         //determine proper model name
         var model = null;
-        var model_name = ActiveSupport.camelize(ActiveSupport.Inflector.singularize(table_name));
-        model_name = model_name.charAt(0).toUpperCase() + model_name.substring(1);
+        if(!options.modelName)
+        {
+            var model_name = ActiveSupport.camelize(ActiveSupport.Inflector.singularize(options.tableName) || options.tableName);
+            options.modelName = model_name.charAt(0).toUpperCase() + model_name.substring(1);
+        }
 
         //constructor
-        model = ActiveRecord.Models[model_name] = function initialize(data)
+        model = ActiveRecord.Models[options.modelName] = function initialize(data)
         {
-            this.modelName = this.constructor.modelName;
-            this.tableName = this.constructor.tableName;
             this._object = {};
-            for (var key in data)
+            for(var key in data)
             {
-                this.set(key, data[key]);
+                //third param is to suppress notifications on set
+                this.set(key,data[key],true);
             }
             this._errors = [];
+            var fields = this.constructor.fields;
+            for(var key in fields)
+            {
+                var field = fields[key];
+                if(!field.primaryKey)
+                {
+                    var value = ActiveRecord.connection.fieldOut(field,this.get(key));
+                    if(Migrations.objectIsFieldDefinition(value))
+                    {
+                        value = value.value;
+                    }
+                    //don't supress notifications on set since these are the processed values
+                    this.set(key,value);
+                }
+            }
+            this._id = this.get(this.constructor.primaryKeyName);
+            //performance optimization if no observers
             this.notify('afterInitialize', data);
-            if('created' in this._object)
-            {
-                this.observe('beforeCreate',ActiveSupport.bind(function set_created_date(){
-                    this.set('created',ActiveSupport.dateFormat('yyyy-mm-dd HH:MM:ss'));
-                },this));
-            }
-            if('updated' in this._object)
-            {
-                this.observe('beforeSave',ActiveSupport.bind(function set_updated_date(){
-                    this.set('updated',ActiveSupport.dateFormat('yyyy-mm-dd HH:MM:ss'));
-                },this));
-            }
         };
-        model.modelName = model_name;
-        model.tableName = table_name;
-
+        model.modelName = options.modelName;
+        model.tableName = options.tableName;
+        model.primaryKeyName = 'id';
+        
         //mixin instance methods
         ActiveSupport.extend(model.prototype, ActiveRecord.InstanceMethods);
 
-        //user defined take precedence
+        //user defined methods take precedence
+        if(typeof(methods) == 'undefined')
+        {
+            //detect if the fields object is actually a methods object
+            for(var method_name in fields)
+            {
+                if(typeof(fields[method_name]) == 'function')
+                {
+                    methods = fields;
+                    fields = null; 
+                }
+                break;
+            }
+        }
         if(methods && typeof(methods) !== 'function')
         {
-            ActiveSupport.extend(model.prototype, methods || {});
+            ActiveSupport.extend(model.prototype, methods);
         }
 
         //mixin class methods
@@ -2786,10 +2929,90 @@ ActiveRecord = {
 
         //add lifecycle abilities
         ActiveEvent.extend(model);
+        
+        //clean and set field definition
+        if(!fields)
+        {
+            fields = {};
+        }
+        var custom_primary_key = false;
+        for(var field_name in fields)
+        {
+            if(typeof(fields[field_name]) === 'object' && fields[field_name].type && !('value' in fields[field_name]))
+            {
+                fields[field_name].value = null;
+            }
+            if(typeof(fields[field_name]) === 'object' && fields[field_name].primaryKey)
+            {
+                custom_primary_key = field_name;
+            }
+        }
+        if(!custom_primary_key)
+        {
+            fields['id'] = {
+                primaryKey: true
+            };
+        }
+        model.fields = fields;
+        if(custom_primary_key)
+        {
+            model.primaryKeyName = custom_primary_key;
+        }
 
+        ActiveSupport.extend(model.prototype, {
+          modelName: model.modelName,
+          tableName: model.tableName,
+          primaryKeyName: model.primaryKeyName
+        });
+        
+        //generate finders
+        for(var key in model.fields)
+        {
+            Finders.generateFindByField(model,key);
+            Finders.generateFindAllByField(model,key);
+        }
+        //get is a synonym for findBy<PrimaryKey>
+        model.get = model['findBy' + ActiveSupport.camelize(model.primaryKeyName, true)];
+        
+        //create table for model if autoMigrate enabled
+        if(ActiveRecord.autoMigrate)
+        {
+            Migrations.Schema.createTable(options.tableName,ActiveSupport.clone(model.fields));
+        }
+        
         return model;
     }
 };
+ActiveRecord.define = ActiveRecord.create;
+
+/**
+ * If the table for your ActiveRecord does not exist, this will define the
+ * ActiveRecord and automatically create the table.
+ * @alias ActiveRecord.define
+ * @param {String} table_name
+ * @param {Object} fields
+ *      Should consist of column name, default value pairs. If an empty array or empty object is set as the default, any arbitrary data can be set and will automatically be serialized when saved. To specify a specific type, set the value to an object that contains a "type" key, with optional "length" and "value" keys.
+ * @param {Object} [methods]
+ * @param {Function} [readyCallback]
+ *      Must be specified if running in asynchronous mode.
+ * @return {Object}
+ * @example
+ * 
+ *     var User = ActiveRecord.define('users',{
+ *         name: '',
+ *         password: '',
+ *         comment_count: 0,
+ *         profile: {
+ *             type: 'text',
+ *             value: ''
+ *         },
+ *         serializable_field: {}
+ *     });
+ *     var u = User.create({
+ *         name: 'alice',
+ *         serializable_field: {a: '1', b: '2'}
+ *     }); 
+ */
  
 ActiveEvent.extend(ActiveRecord);
 
@@ -2854,17 +3077,20 @@ ActiveRecord.observe = function observe(event_name,observer)
 
 var Errors = {
     /**
+     * @alias ActiveRecord.Errors.ConnectionNotEstablished
      * @property {String} Error that will be thrown if ActiveRecord is used without a connection.
      */
-    ConnectionNotEstablished: 'No ActiveRecord connection is active.',
+    ConnectionNotEstablished: ActiveSupport.createError('No ActiveRecord connection is active.'),
     /**
+     * @alias ActiveRecord.Errors.MethodDoesNotExist
      * @property {String} Error that will be thrown if using InMemory based adapter, and a method called inside a SQL statement cannot be found.
      */
-    MethodDoesNotExist: 'The requested method does not exist.',
+    MethodDoesNotExist: ActiveSupport.createError('The requested method does not exist.'),
     /**
+     * @alias ActiveRecord.Errors.InvalidFieldType
      * @property {String} Error that will be thrown if an unrecognized field type definition is used.
      */
-    InvalidFieldType: 'The field type does not exist:'
+    InvalidFieldType: ActiveSupport.createError('The field type does not exist:')
 };
 
 ActiveRecord.Errors = Errors;
@@ -2875,16 +3101,20 @@ ActiveSupport.extend(ActiveRecord.InstanceMethods,{
      * @alias ActiveRecord.Instance.set
      * @param {String} key
      * @param {mixed} value
+     * @param {Boolean} suppress_notifications Defaults to false
      * @return {mixed} the value that was set
      */
-    set: function set(key, value)
+    set: function set(key, value, suppress_notifications)
     {
         if (typeof(this[key]) !== "function")
         {
             this[key] = value;
         }
         this._object[key] = value;
-        this.notify('set',key,value);
+        if(!suppress_notifications)
+        {
+            this.notify('set',key,value);
+        }
     },
     /**
      * Get a given key on the object. If your field name is a reserved word, or the name of a method (save, updateAttribute, etc) you must use the get() method to access the property. For convenience non reserved words (title, user_id, etc) can be accessed directly (instance.key_name)
@@ -2912,12 +3142,12 @@ ActiveSupport.extend(ActiveRecord.InstanceMethods,{
      */
     keys: function keys()
     {
-        var keysArray = [];
+        var keys_array = [];
         for(var key_name in this._object)
         {
-            keysArray.push(key_name);
+            keys_array.push(key_name);
         }
-        return keysArray;
+        return keys_array;
     },
     /**
      * Returns an array of the column values that the instance contains.
@@ -2926,12 +3156,12 @@ ActiveSupport.extend(ActiveRecord.InstanceMethods,{
      */
     values: function values()
     {
-        var valuesArray = [];
+        var values_array = [];
         for(var key_name in this._object)
         {
-            valuesArray.push(this._object[key_name]);
+            values_array.push(this._object[key_name]);
         }
-        return valuesArray;
+        return values_array;
     },
     /**
      * Sets a given key on the object and immediately persists that change to the database triggering any callbacks or validation .
@@ -2964,11 +3194,11 @@ ActiveSupport.extend(ActiveRecord.InstanceMethods,{
      */
     reload: function reload()
     {
-        if (!this.get('id'))
+        if (this._id === undefined)
         {
             return false;
         }
-        var record = this.constructor.find(this.get('id'));
+        var record = this.constructor.get(this._id);
         if (!record)
         {
             return false;
@@ -2984,34 +3214,66 @@ ActiveSupport.extend(ActiveRecord.InstanceMethods,{
     /**
      * Persists the object, creating or updating as nessecary. 
      * @alias ActiveRecord.Instance.save
+     * @param {Boolean} force_created_mode Defaults to false, will force the
+     *     record to act as if it was created even if an id property was passed.
      * @return {Boolean}
      */
-    save: function save()
+    save: function save(force_created_mode)
     {
         //callbacks/proxy not working
         if (!this._valid())
         {
             return false;
         }
+        //apply field in conversions
+        for (var key in this.constructor.fields)
+        {
+            if(!this.constructor.fields[key].primaryKey)
+            {
+                //third param is to suppress observers
+                this.set(key,ActiveRecord.connection.fieldIn(this.constructor.fields[key],this.get(key)),true);
+            }
+        }
         if (this.notify('beforeSave') === false)
         {
             return false;
         }
-        if (!this.get('id'))
+        if ('updated' in this._object)
         {
-            if(this.notify('beforeCreate') === false)
+            this.set('updated',ActiveSupport.dateFormat('yyyy-mm-dd HH:MM:ss'));
+        }
+        if (force_created_mode || this._id === undefined)
+        {
+            if (this.notify('beforeCreate') === false)
             {
                 return false;
             }
-            ActiveRecord.connection.insertEntity(this.tableName, this.toObject());
-            this.set('id', ActiveRecord.connection.getLastInsertedRowId());
+            if ('created' in this._object)
+            {
+                this.set('created',ActiveSupport.dateFormat('yyyy-mm-dd HH:MM:ss'));
+            }
+            ActiveRecord.connection.insertEntity(this.tableName, this.constructor.primaryKeyName, this.toObject());
+            if(!this.get(this.constructor.primaryKeyName))
+            {
+                this.set(this.constructor.primaryKeyName, ActiveRecord.connection.getLastInsertedRowId());
+            }
             Synchronization.triggerSynchronizationNotifications(this,'afterCreate');
             this.notify('afterCreate');
         }
         else
         {
-            ActiveRecord.connection.updateEntity(this.tableName, this.get('id'), this.toObject());
+            ActiveRecord.connection.updateEntity(this.tableName, this.constructor.primaryKeyName, this._id, this.toObject());
         }
+        //apply field out conversions
+        for (var key in this.constructor.fields)
+        {
+            if(!this.constructor.fields[key].primaryKey)
+            {
+                //third param is to suppress observers
+                this.set(key,ActiveRecord.connection.fieldOut(this.constructor.fields[key],this.get(key)),true);
+            }
+        }
+        this._id = this.get(this.constructor.primaryKeyName);
         Synchronization.triggerSynchronizationNotifications(this,'afterSave');
         this.notify('afterSave');
         return this;
@@ -3023,7 +3285,7 @@ ActiveSupport.extend(ActiveRecord.InstanceMethods,{
      */
     destroy: function destroy()
     {
-        if (!this.get('id'))
+        if (this._id === undefined)
         {
             return false;
         }
@@ -3031,7 +3293,7 @@ ActiveSupport.extend(ActiveRecord.InstanceMethods,{
         {
             return false;
         }
-        ActiveRecord.connection.deleteEntity(this.tableName,this.get('id'));
+        ActiveRecord.connection.deleteEntity(this.tableName,this.constructor.primaryKeyName,this._id);
         Synchronization.triggerSynchronizationNotifications(this,'afterDestroy');
         if (this.notify('afterDestroy') === false)
         {
@@ -3081,7 +3343,7 @@ ActiveSupport.extend(ActiveRecord.ClassMethods,{
      * @param {mixed} params
      *      Can be an integer to try and find a record by id, a complete SQL statement String, or Object of params, params may contain:
      *          select: Array of columns to select (default ['*'])
-     *          where: String or Object
+     *          where: String or Object or Array
      *          joins: String
      *          order: String
      *          limit: Number
@@ -3098,6 +3360,10 @@ ActiveSupport.extend(ActiveRecord.ClassMethods,{
      *             id: 5
      *         }
      *     });
+     *     var user = User.find({
+     *         first: true,
+     *         where: ['id = ?',5]
+     *     });
      *     var users = User.find(); //finds all
      *     var users = User.find({
      *         where: 'name = "alice" AND password = "' + md5('pass') + '"',
@@ -3112,6 +3378,13 @@ ActiveSupport.extend(ActiveRecord.ClassMethods,{
      *         order: 'id DESC'
      *     });
      *     var users = User.find('SELECT * FROM users ORDER id DESC');
+     *
+     *     // If your primary key is not numeric, find(id) will not work.
+     *     // Use findBy<PrimaryKey>(id) or get(id) instead:
+     *
+     *     var commit = Commit.find('cxfeea6'); // BAD - Will be interpreted as a SQL statement.
+     *     commit = Commit.findById('cxfeea6'); // GOOD
+     *     commit = Commit.get('cxfeea6');      // GOOD
      */
     find: function find(params)
     {
@@ -3120,23 +3393,19 @@ ActiveSupport.extend(ActiveRecord.ClassMethods,{
         {
             params = {};
         }
-        if (params.first || typeof(params) === "number" || (typeof(params) === "string" && params.match(/^\d+$/)))
+        if ((params.first && typeof params.first === "boolean") || ((typeof(params) === "number" || (typeof(params) === "string" && params.match(/^\d+$/))) && arguments.length == 1))
         {
             if (params.first)
             {
                 //find first
                 params.limit = 1;
+                result = ActiveRecord.connection.findEntities(this.tableName,params);
             }
             else
             {
-                //find by id
-                params = ActiveSupport.extend(arguments[1] || {},{
-                    where: {
-                        id: params
-                    }
-                });
+                //single id
+                result = ActiveRecord.connection.findEntitiesById(this.tableName,this.primaryKeyName,[params]);
             }
-            result = ActiveRecord.connection.findEntities(this.tableName,params);
             if (result && result.iterate && result.iterate(0))
             {
                 return this.build(result.iterate(0));
@@ -3149,10 +3418,16 @@ ActiveSupport.extend(ActiveRecord.ClassMethods,{
         else
         {
             result = null;
-            if (typeof(params) === 'string')
+            if (typeof(params) === 'string' && !params.match(/^\d+$/))
             {
                 //find by sql
-                result = ActiveRecord.connection.findEntities(params);
+                result = ActiveRecord.connection.findEntities.apply(ActiveRecord.connection,arguments);
+            }
+            else if (params && ((typeof(params) == 'object' && 'length' in params && 'slice' in params) || ((typeof(params) == 'number' || typeof(params) == 'string') && arguments.length > 1)))
+            {
+                //find by multiple ids
+                var ids = ((typeof(params) == 'number' || typeof(params) == 'string') && arguments.length > 1) ? ActiveSupport.arrayFrom(arguments) : params;
+                result = ActiveRecord.connection.findEntitiesById(this.tableName,this.primaryKeyName,ids);
             }
             else
             {
@@ -3166,12 +3441,8 @@ ActiveSupport.extend(ActiveRecord.ClassMethods,{
                     response.push(this.build(row));
                 }, this));
             }
-            ResultSet.extend(response,params,this);
+            this.resultSetFromArray(response,params);
             this.notify('afterFind',response,params);
-            if(params.synchronize)
-            {
-                Synchronization.synchronizeResultSet(this,params,response);
-            }
             return response;
         }
     },
@@ -3199,7 +3470,7 @@ ActiveSupport.extend(ActiveRecord.ClassMethods,{
         }
         else
         {
-            var instance = this.find(id);
+            var instance = this.get(id);
             if(!instance)
             {
                 return false;
@@ -3217,7 +3488,7 @@ ActiveSupport.extend(ActiveRecord.ClassMethods,{
     {
         ++ActiveRecord.internalCounter;
         var record = new this(ActiveSupport.clone(data));
-        record.internalCount = parseInt(new Number(ActiveRecord.internalCounter), 10); //ensure number is a copy
+        record.internalCount = parseInt(Number(ActiveRecord.internalCounter),10); //ensure number is a copy
         return record;
     },
     /**
@@ -3234,7 +3505,7 @@ ActiveSupport.extend(ActiveRecord.ClassMethods,{
     create: function create(data)
     {
         var record = this.build(data);
-        record.save();
+        record.save(true);
         return record;
     },
     /**
@@ -3256,7 +3527,7 @@ ActiveSupport.extend(ActiveRecord.ClassMethods,{
     update: function update(id, attributes)
     {
         //array of ids and array of attributes passed in
-        if(typeof(id.length) !== 'undefined')
+        if (ActiveSupport.isArray(id))
         {
             var results = [];
             for(var i = 0; i < id.length; ++i)
@@ -3267,7 +3538,11 @@ ActiveSupport.extend(ActiveRecord.ClassMethods,{
         }
         else
         {
-            var record = this.find(id);
+            var record = this.get(id);
+            if(!record)
+            {
+                return false;
+            }
             record.updateAttributes(attributes);
             return record;
         }
@@ -3284,35 +3559,34 @@ ActiveSupport.extend(ActiveRecord.ClassMethods,{
         ActiveRecord.connection.updateMultitpleEntities(this.tableName, updates, conditions);
     },
     /**
-     * @alias ActiveRecord.Class.transaction
-     * @param {Function} proceed
-     *      The block of code to execute inside the transaction.
-     * @param {Function} [error]
-     *      Optional error handler that will be called with an exception if one is thrown during a transaction. If no error handler is passed the exception will be thrown.
+     * Extends a vanilla array with ActiveRecord.ResultSet methods allowing for
+     * the construction of custom result set objects from arrays where result 
+     * sets are expected. This will modify the array that is passed in and
+     * return the same array object.
+     * @alias ActiveRecord.Class.resultSetFromArray
+     * @param {Array} result_set
+     * @param {Object} [params]
+     * @return {Array}
      * @example
-     *     Account.transaction(function(){
-     *         var from = Account.find(2);
-     *         var to = Account.find(3);
-     *         to.despoit(from.withdraw(100.00));
-     *     });
+     *     var one = Comment.find(1);
+     *     var two = Comment.find(2);
+     *     var result_set = Comment.resultSetFromArray([one,two]);
      */
-    transaction: function transaction(proceed,error)
+    resultSetFromArray: function resultSetFromArray(result_set,params)
     {
-        try
+        if(!params)
         {
-            ActiveRecord.connection.transaction(proceed);
+            params = {};
         }
-        catch(e)
+        for(var method_name in ResultSet.InstanceMethods)
         {
-            if(error)
-            {
-                error(e);
-            }
-            else
-            {
-                throw e;
-            }
+            result_set[method_name] = ActiveSupport.curry(ResultSet.InstanceMethods[method_name],result_set,params,this);
         }
+        if(params.synchronize)
+        {
+            Synchronization.synchronizeResultSet(this,params,result_set);
+        }
+        return result_set;
     }
 });
 
@@ -3416,7 +3690,7 @@ ActiveSupport.extend(ActiveRecord.ClassMethods,{
     {
         return this.find({
             first: true,
-            order: 'id DESC'
+            order: this.primaryKeyName + ' DESC'
         });
     }
 });
@@ -3485,10 +3759,88 @@ ActiveRecord.execute = function execute()
 {
     if (!ActiveRecord.connection)
     {
-        throw ActiveRecord.Errors.ConnectionNotEstablished;
+        return ActiveSupport.throwError(ActiveRecord.Errors.ConnectionNotEstablished);
     }
     return ActiveRecord.connection.executeSQL.apply(ActiveRecord.connection, arguments);
 };
+
+/**
+ * Escapes a given argument for use in a SQL string. By default
+ * the argument passed will also be enclosed in quotes.
+ * @alias ActiveRecord.escape
+ * @param {mixed} argument
+ * @param {Boolean} [supress_quotes] Defaults to false.
+ * @return {mixed}
+ * ActiveRecord.escape(5) == 5
+ * ActiveRecord.escape('tes"t') == '"tes\"t"';
+ */
+ActiveRecord.escape = function escape(argument,supress_quotes)
+{
+    var quote = supress_quotes ? '' : '"';
+    return typeof(argument) == 'number'
+        ? argument
+        : quote + String(argument).replace(/\"/g,'\\"').replace(/\\/g,'\\\\').replace(/\0/g,'\\0') + quote
+    ;
+};
+
+
+/**
+ * @alias ActiveRecord.transaction
+ * @param {Function} proceed
+ *      The block of code to execute inside the transaction.
+ * @param {Function} [error]
+ *      Optional error handler that will be called with an exception if one is thrown during a transaction. If no error handler is passed the exception will be thrown.
+ * @example
+ *     ActiveRecord.transaction(function(){
+ *         var from = Account.find(2);
+ *         var to = Account.find(3);
+ *         to.despoit(from.withdraw(100.00));
+ *     });
+ */
+ActiveRecord.transaction = function transaction(proceed,error)
+{
+    try
+    {
+        ActiveRecord.connection.transaction(proceed);
+    }
+    catch(e)
+    {
+        if(error)
+        {
+            error(e);
+        }
+        else
+        {
+            return ActiveSupport.throwError(e);
+        }
+    }
+};
+//deprecated
+ActiveRecord.ClassMethods.transaction = ActiveRecord.transaction;
+
+Adapters.defaultResultSetIterator = function defaultResultSetIterator(iterator)
+{
+    if (typeof(iterator) === 'number')
+    {
+        if (this.rows[iterator])
+        {
+            return ActiveSupport.clone(this.rows[iterator]);
+        }
+        else
+        {
+            return false;
+        }
+    }
+    else
+    {
+        for (var i = 0; i < this.rows.length; ++i)
+        {
+            var row = ActiveSupport.clone(this.rows[i]);
+            iterator(row);
+        }
+    }
+};
+
 
 Adapters.InstanceMethods = {
     setValueFromFieldIfValueIsNull: function setValueFromFieldIfValueIsNull(field,value)
@@ -3502,7 +3854,7 @@ Adapters.InstanceMethods = {
                 var default_value = this.getDefaultValueFromFieldDefinition(field);
                 if(typeof(default_value) === 'undefined')
                 {
-                    throw Errors.InvalidFieldType + (field ? (field.type || '[object]') : 'false');
+                    return ActiveSupport.throwError(Errors.InvalidFieldType,(field ? (field.type || '[object]') : 'false'));
                 }
                 return field.value || default_value;
             }
@@ -3516,7 +3868,7 @@ Adapters.InstanceMethods = {
     },
     getColumnDefinitionFragmentFromKeyAndColumns: function getColumnDefinitionFragmentFromKeyAndColumns(key,columns)
     {
-        return key + ' ' + ((typeof(columns[key]) === 'object' && typeof(columns[key].type) !== 'undefined') ? columns[key].type : this.getDefaultColumnDefinitionFragmentFromValue(columns[key]));
+        return this.quoteIdentifier(key) + ((typeof(columns[key]) === 'object' && typeof(columns[key].type) !== 'undefined') ? columns[key].type : this.getDefaultColumnDefinitionFragmentFromValue(columns[key]));
     },
     getDefaultColumnDefinitionFragmentFromValue: function getDefaultColumnDefinitionFragmentFromValue(value)
     {
@@ -3528,11 +3880,31 @@ Adapters.InstanceMethods = {
         {
             return 'INT';
         }
+        if (typeof(value) == 'boolean')
+        {
+            return 'TINYINT(1)';
+        }
         return 'TEXT';
     },
     getDefaultValueFromFieldDefinition: function getDefaultValueFromFieldDefinition(field)
     {
         return field.value ? field.value : Migrations.fieldTypesWithDefaultValues[field.type ? field.type.replace(/\(.*/g,'').toLowerCase() : ''];
+    },
+    quoteIdentifier: function quoteIdentifier(name)
+    {
+      return '"' + name + '"';
+    },
+    log: function log()
+    {
+        if(!ActiveRecord.logging)
+        {
+            return;
+        }
+        if(arguments[0])
+        {
+            arguments[0] = 'ActiveRecord: ' + arguments[0];
+        }
+        return ActiveSupport.log.apply(ActiveSupport,arguments || {});
     }
 };
 
@@ -3540,21 +3912,23 @@ ActiveRecord.Adapters = Adapters;
 
 Adapters.SQL = {
     schemaLess: false,
-    insertEntity: function insertEntity(table, data)
+    insertEntity: function insertEntity(table, primary_key_name, data)
     {
         var keys = ActiveSupport.keys(data).sort();
         var values = [];
         var args = [];
+        var quoted_keys = [];
         for(var i = 0; i < keys.length; ++i)
         {
             args.push(data[keys[i]]);
             values.push('?');
+            quoted_keys.push(this.quoteIdentifier(keys[i]));
         }
-        args.unshift("INSERT INTO " + table + " (" + keys.join(',') + ") VALUES (" + values.join(',') + ")");
+        args.unshift("INSERT INTO " + table + " (" + quoted_keys.join(',') + ") VALUES (" + values.join(',') + ")");
         var response = this.executeSQL.apply(this,args);
-        var id = this.getLastInsertedRowId();
+        var id = data[primary_key_name] || this.getLastInsertedRowId();
         var data_with_id = ActiveSupport.clone(data);
-        data_with_id.id = id;
+        data_with_id[primary_key_name] = id;
         this.notify('created',table,id,data_with_id);
         return response;
     },
@@ -3568,14 +3942,14 @@ Adapters.SQL = {
             for (var i = 0; i < keys.length; ++i)
             {
                 args.push(updates[keys[i]]);
-                values.push(updates[i] + " = ?");
+                values.push(this.quoteIdentifier(keys[i]) + " = ?");
             }
             updates = values.join(',');
         }
         args.unshift('UPDATE ' + table + ' SET ' + updates + this.buildWhereSQLFragment(conditions, args));
         return this.executeSQL.apply(this, args);
     },
-    updateEntity: function updateEntity(table, id, data)
+    updateEntity: function updateEntity(table, primary_key_name, id, data)
     {
         var keys = ActiveSupport.keys(data).sort();
         var args = [];
@@ -3583,21 +3957,13 @@ Adapters.SQL = {
         for (var i = 0; i < keys.length; ++i)
         {
             args.push(data[keys[i]]);
-            values.push(keys[i] + " = ?");
+            values.push(this.quoteIdentifier(keys[i]) + " = ?");
         }
         args.push(id);
-        args.unshift("UPDATE " + table + " SET " + values.join(',') + " WHERE id = ?");
+        args.unshift("UPDATE " + table + " SET " + values.join(',') + " WHERE " + this.quoteIdentifier(primary_key_name) + " = ?");
         var response = this.executeSQL.apply(this, args);
         this.notify('updated',table,id,data);
         return response;
-    },
-    updateAttribute: function updateAttribute(table, id, key, value)
-    {
-        var args = ["UPDATE " + table + " SET " + key + " = ? WHERE id = ?", value, id];
-        this.executeSQL.apply(this, args);
-        this.notify('updated',table,id,this.findEntities(table,{
-            id: id
-        }).iterate(0));
     },
     calculateEntities: function calculateEntities(table, params, operation)
     {
@@ -3612,20 +3978,20 @@ Adapters.SQL = {
         var args = this.buildSQLArguments(table, params, operation);
         return process_count_query_result(this.executeSQL.apply(this, args));
     },
-    deleteEntity: function deleteEntity(table, id)
+    deleteEntity: function deleteEntity(table, primary_key_name, id)
     {
         var args, response;
         if (id === 'all')
         {
             args = ["DELETE FROM " + table];
             var ids = [];
-            var ids_result_set = this.executeSQL('SELECT id FROM ' + table);
+            var ids_result_set = this.executeSQL('SELECT ' + this.quoteIdentifier(primary_key_name) + ' FROM ' + table);
             if(!ids_result_set)
             {
                 return null;
             }
             this.iterableFromResultSet(ids_result_set).iterate(function id_collector_iterator(row){
-                ids.push(row.id);
+                ids.push(row[primary_key_name]);
             });
             response = this.executeSQL.apply(this,args);
             for(var i = 0; i < ids.length; ++i)
@@ -3636,18 +4002,30 @@ Adapters.SQL = {
         }
         else
         {
-            args = ["DELETE FROM " + table + " WHERE id = ?",id];
+            args = ["DELETE FROM " + table + " WHERE " + this.quoteIdentifier(primary_key_name) + " = ?",id];
             response = this.executeSQL.apply(this,args);
             this.notify('destroyed',table,id);
             return response;
         }
     },
+    findEntitiesById: function findEntityById(table, primary_key_name, ids)
+    {
+        var response = this.executeSQL.apply(this,['SELECT * FROM ' + table + ' WHERE ' + this.quoteIdentifier(primary_key_name) + ' IN (' + ids.join(',') + ')']);
+        if (!response)
+        {
+            return false;
+        }
+        else
+        {
+            return ActiveRecord.connection.iterableFromResultSet(response);
+        }
+    },
     findEntities: function findEntities(table, params)
     {
         var args;
-        if (typeof(table) === 'string' && !params)
+        if (typeof(table) === 'string' && !table.match(/^\d+$/) && typeof(params) != 'object')
         {
-            args = [table];
+            args = arguments;
         }
         else
         {
@@ -3669,6 +4047,7 @@ Adapters.SQL = {
         var sql = 'SELECT ' + (calculation ? (calculation + ' AS calculation') : (params.select ? params.select.join(',') : '*')) + ' FROM ' + table +
             this.buildWhereSQLFragment(params.where, args) +
             (params.joins ? ' ' + params.joins : '') + 
+            (params.group ? ' GROUP BY ' + params.group : '') + 
             (params.order ? ' ORDER BY ' + params.order : '') + 
             (params.offset && params.limit ? ' LIMIT ' + params.offset + ',' + params.limit : '') + 
             (!params.offset && params.limit ? ' LIMIT ' + params.limit : '');
@@ -3678,14 +4057,35 @@ Adapters.SQL = {
     buildWhereSQLFragment: function buildWhereSQLFragment(fragment, args)
     {
         var where, keys, i;
-        if(fragment && typeof(fragment) !== "string")
+        if(fragment && ActiveSupport.isArray(fragment))
+        {
+            for(i = 1; i < fragment.length; ++i)
+            {
+                args.push(fragment[i]);
+            }
+            return ' WHERE ' + fragment[0];
+        }
+        else if(fragment && typeof(fragment) !== "string")
         {
             where = '';
             keys = ActiveSupport.keys(fragment);
             for(i = 0; i < keys.length; ++i)
             {
-                where += keys[i] + " = ? AND ";
-                args.push(typeof(fragment[keys[i]]) === 'number' ? (fragment[keys[i]]) : (new String(fragment[keys[i]]).toString()));
+                where += this.quoteIdentifier(keys[i]) + " = ? AND ";
+                var value;
+                if(typeof(fragment[keys[i]]) === 'number')
+                {
+                    value = fragment[keys[i]];
+                }
+                else if(typeof(fragment[keys[i]]) == 'boolean')
+                {
+                    value = parseInt(Number(fragment[keys[i]]),10);
+                }
+                else
+                {
+                    value = String(fragment[keys[i]]);
+                }
+                args.push(value);
             }
             where = ' WHERE ' + where.substring(0,where.length - 4);
         }
@@ -3722,6 +4122,10 @@ Adapters.SQL = {
     },
     fieldIn: function fieldIn(field, value)
     {
+        if(value && value instanceof Date)
+        {
+            return ActiveSupport.dateFormat(value,'yyyy-mm-dd HH:MM:ss');
+        }
         if(Migrations.objectIsFieldDefinition(field))
         {
             field = this.getDefaultValueFromFieldDefinition(field);
@@ -3729,15 +4133,15 @@ Adapters.SQL = {
         value = this.setValueFromFieldIfValueIsNull(field,value);
         if (typeof(field) === 'string')
         {
-            return (new String(value)).toString();
+            return String(value);
         }
         if (typeof(field) === 'number')
         {
-            return (new String(value)).toString();
+            return String(value);
         }
         if(typeof(field) === 'boolean')
         {
-            return (new String(parseInt(new Number(value), 10))).toString();
+            return String(parseInt(Number(value),10));
         }
         //array or object
         if (typeof(value) === 'object' && !Migrations.objectIsFieldDefinition(field))
@@ -3749,6 +4153,11 @@ Adapters.SQL = {
     {
         if(Migrations.objectIsFieldDefinition(field))
         {
+            //date handling
+            if(typeof(value) == 'string' && /date/.test(field.type.toLowerCase()))
+            {
+                return ActiveSupport.dateFromDateTime(value);
+            }
             field = this.getDefaultValueFromFieldDefinition(field);
         }
         value = this.setValueFromFieldIfValueIsNull(field,value);
@@ -3766,11 +4175,12 @@ Adapters.SQL = {
         }
         if (typeof(field) === 'number')
         {
-            var trim = function(str)
+            if (typeof(value) === 'number')
             {
-                return (new String(str)).toString().replace(/^\s+|\s+$/g,"");
+                return value;
             };
-            return (trim(value).length > 0 && !(/[^0-9.]/).test(trim(value)) && (/\.\d/).test(trim(value))) ? parseFloat(new Number(value)) : parseInt(new Number(value), 10);
+            var t = ActiveSupport.trim(String(value));
+            return (t.length > 0 && !(/[^0-9.]/).test(t) && (/\.\d/).test(t)) ? parseFloat(Number(value)) : parseInt(Number(value),10);
         }
         //array or object (can come from DB (as string) or coding enviornment (object))
         if ((typeof(value) === 'string' || typeof(value) === 'object') && (typeof(field) === 'object' && (typeof(field.length) !== 'undefined' || typeof(field.type) === 'undefined')))
@@ -3784,6 +4194,20 @@ Adapters.SQL = {
                 return value;
             }
         }
+    },
+    transaction: function transaction(proceed)
+    {
+        try
+        {
+            ActiveRecord.connection.executeSQL('BEGIN');
+            proceed();
+            ActiveRecord.connection.executeSQL('COMMIT');
+        }
+        catch(e)
+        {
+            ActiveRecord.connection.executeSQL('ROLLBACK');
+            return ActiveSupport.throwError(e);
+        }
     }
 };
 
@@ -3795,9 +4219,16 @@ Adapters.SQLite = ActiveSupport.extend(ActiveSupport.clone(Adapters.SQL),{
         for (var i = 0; i < keys.length; ++i)
         {
             var key = keys[i];
-            fragments.push(this.getColumnDefinitionFragmentFromKeyAndColumns(key,columns));
+            if(columns[key].primaryKey)
+            {
+                var type = columns[key].type || 'INTEGER';
+                fragments.unshift(this.quoteIdentifier(key) + ' ' + type + ' PRIMARY KEY');
+            }
+            else
+            {
+                fragments.push(this.getColumnDefinitionFragmentFromKeyAndColumns(key,columns));
+            }
         }
-        fragments.unshift('id INTEGER PRIMARY KEY');
         return this.executeSQL('CREATE TABLE IF NOT EXISTS ' + table_name + ' (' + fragments.join(',') + ')');
     },
     dropColumn: function dropColumn(table_name,column_name)
@@ -3814,472 +4245,6 @@ Adapters.SQLite = ActiveSupport.extend(ActiveSupport.clone(Adapters.SQL),{
         },this));
     }
 });
-
-Adapters.MySQL = ActiveSupport.extend(ActiveSupport.clone(Adapters.SQL),{
-    createTable: function createTable(table_name,columns)
-    {
-        var keys = ActiveSupport.keys(columns);
-        var fragments = [];
-        for (var i = 0; i < keys.length; ++i)
-        {
-            var key = keys[i];
-            fragments.push(this.getColumnDefinitionFragmentFromKeyAndColumns(key,columns));
-        }
-        fragments.unshift('id INT NOT NULL AUTO_INCREMENT');
-        fragments.push('PRIMARY KEY(id)');
-        return this.executeSQL('CREATE TABLE IF NOT EXISTS ' + table_name + ' (' + fragments.join(',') + ') ENGINE=InnoDB');
-    },
-    dropColumn: function dropColumn(table_column,column_name)
-    {
-        return this.executeSQL('ALTER TABLE ' + table_name + ' DROP COLUMN ' + key);
-    }
-});
-
-/**
- * Adapter for Jaxer configured with MySQL.
- * @alias ActiveRecord.Adapters.JaxerMySQL
- * @property {ActiveRecord.Adapter}
- */ 
-Adapters.JaxerMySQL = function JaxerMySQL(){
-    ActiveSupport.extend(this,Adapters.InstanceMethods);
-    ActiveSupport.extend(this,Adapters.MySQL);
-    ActiveSupport.extend(this,{
-        log: function log()
-        {
-            if (!ActiveRecord.logging)
-            {
-                return;
-            }
-            if (arguments[0])
-            {
-                arguments[0] = 'ActiveRecord: ' + arguments[0];
-            }
-            return ActiveSupport.log(ActiveSupport,arguments || []);
-        },
-        executeSQL: function executeSQL(sql)
-        {
-            ActiveRecord.connection.log("Adapters.JaxerMySQL.executeSQL: " + sql + " [" + ActiveSupport.arrayFrom(arguments).slice(1).join(',') + "]");
-            var response = Jaxer.DB.execute.apply(Jaxer.DB.connection, arguments);
-            return response;
-        },
-        getLastInsertedRowId: function getLastInsertedRowId()
-        {
-            return Jaxer.DB.lastInsertId;
-        },
-        iterableFromResultSet: function iterableFromResultSet(result)
-        {
-            result.iterate = function iterate(iterator)
-            {
-                if (typeof(iterator) === 'number')
-                {
-                    if (this.rows[iterator])
-                    {
-                        return ActiveSupport.clone(this.rows[iterator]);
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    for(var i = 0; i < this.rows.length; ++i)
-                    {
-                        var row = ActiveSupport.clone(this.rows[i]);
-                        delete row['$values'];
-                        iterator(row);
-                    }
-                }
-            };
-            return result;
-        },
-        transaction: function transaction(proceed)
-        {
-            try
-            {
-                ActiveRecord.connection.executeSQL('BEGIN');
-                proceed();
-                ActiveRecord.connection.executeSQL('COMMIT');
-            }
-            catch(e)
-            {
-                ActiveRecord.connection.executeSQL('ROLLBACK');
-                throw e;
-            }
-        }
-    });
-};
-
-Adapters.JaxerMySQL.connect = function connect(options)
-{
-    if(!options)
-    {
-        options = {};
-    }
-    for(var key in options)
-    {
-        options[key.toUpperCase()] = options[key];
-    }
-    Jaxer.DB.connection = new Jaxer.DB.MySQL.Connection(ActiveSupport.extend({
-        HOST: 'localhost',
-        PORT: 3306,
-        USER: 'root',
-        PASS: '',
-        NAME: 'jaxer'
-    },options));
-    return new Adapters.JaxerMySQL();
-};
- 
-/**
- * Adapter for Jaxer configured with SQLite
- * @alias ActiveRecord.Adapters.JaxerSQLite
- * @property {ActiveRecord.Adapter}
- */ 
-Adapters.JaxerSQLite = function JaxerSQLite(){
-    ActiveSupport.extend(this,Adapters.InstanceMethods);
-    ActiveSupport.extend(this,Adapters.SQLite);
-    ActiveSupport.extend(this,{
-        log: function log()
-        {
-            if (!ActiveRecord.logging)
-            {
-                return;
-            }
-            if (arguments[0])
-            {
-                arguments[0] = 'ActiveRecord: ' + arguments[0];
-            }
-            return ActiveSupport.log.apply(ActiveSupport,arguments || {});
-        },
-        executeSQL: function executeSQL(sql)
-        {
-            ActiveRecord.connection.log("Adapters.JaxerSQLite.executeSQL: " + sql + " [" + ActiveSupport.arrayFrom(arguments).slice(1).join(',') + "]");
-            var response = Jaxer.DB.execute.apply(Jaxer.DB.connection, arguments);
-            return response;
-        },
-        getLastInsertedRowId: function getLastInsertedRowId()
-        {
-            return Jaxer.DB.lastInsertId;
-        },
-        iterableFromResultSet: function iterableFromResultSet(result)
-        {
-            result.iterate = function iterate(iterator)
-            {
-                if (typeof(iterator) === 'number')
-                {
-                    if (this.rows[iterator])
-                    {
-                        return ActiveSupport.clone(this.rows[iterator]);
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    for (var i = 0; i < this.rows.length; ++i)
-                    {
-                        var row = ActiveSupport.clone(this.rows[i]);
-                        delete row['$values'];
-                        iterator(row);
-                    }
-                }
-            };
-            return result;
-        },
-        transaction: function transaction(proceed)
-        {
-            try
-            {
-                ActiveRecord.connection.executeSQL('BEGIN');
-                proceed();
-                ActiveRecord.connection.executeSQL('COMMIT');
-            }
-            catch(e)
-            {
-                ActiveRecord.connection.executeSQL('ROLLBACK');
-                throw e;
-            }
-        }
-    });
-};
-Adapters.JaxerSQLite.connect = function connect(path)
-{
-    Jaxer.DB.connection = new Jaxer.DB.SQLite.createDB({
-        PATH: Jaxer.Dir.resolve(path || 'ActiveRecord.sqlite')
-    });
-    return new Adapters.JaxerSQLite();
-};
- 
-/**
- * Adapter for browsers supporting a SQL implementation (Gears, HTML5).
- * @alias ActiveRecord.Adapters.Gears
- * @property {ActiveRecord.Adapter}
- */
-Adapters.Gears = function Gears(db){
-    this.db = db;
-    ActiveSupport.extend(this,Adapters.InstanceMethods);
-    ActiveSupport.extend(this,Adapters.SQLite);
-    ActiveSupport.extend(this,{
-        log: function log()
-        {
-            if(!ActiveRecord.logging)
-            {
-                return;
-            }
-            if(arguments[0])
-            {
-                arguments[0] = 'ActiveRecord: ' + arguments[0];
-            }
-            return ActiveSupport.log.apply(ActiveSupport,arguments || []);
-        },
-        executeSQL: function executeSQL(sql)
-        {
-            var args = ActiveSupport.arrayFrom(arguments);
-            var proceed = null;
-            if(typeof(args[args.length - 1]) === 'function')
-            {
-                proceed = args.pop();
-            }
-            ActiveRecord.connection.log("Adapters.Gears.executeSQL: " + sql + " [" + args.slice(1).join(',') + "]");
-            var response = ActiveRecord.connection.db.execute(sql,args.slice(1));
-            if(proceed)
-            {
-                proceed(response);
-            }
-            return response;
-        },
-        getLastInsertedRowId: function getLastInsertedRowId()
-        {
-            return this.db.lastInsertRowId;
-        },
-        iterableFromResultSet: function iterableFromResultSet(result)
-        {
-            var response = {
-                rows: []
-            };
-            var count = result.fieldCount();
-            while(result.isValidRow())
-            {
-                var row = {};
-                for(var i = 0; i < count; ++i)
-                {
-                    row[result.fieldName(i)] = result.field(i);
-                }
-                response.rows.push(row);
-                result.next();
-            }
-            result.close();
-            response.iterate = function(iterator)
-            {
-                if(typeof(iterator) === 'number')
-                {
-                    if (this.rows[iterator])
-                    {
-                        return ActiveSupport.clone(this.rows[iterator]);
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    for(var i = 0; i < this.rows.length; ++i)
-                    {
-                        var row = ActiveSupport.clone(this.rows[i]);
-                        iterator(row);
-                    }
-                }
-            };
-            return response;
-        },
-        fieldListFromTable: function(table_name)
-        {
-            var response = {};
-            var description = ActiveRecord.connection.iterableFromResultSet(ActiveRecord.connection.executeSQL('SELECT * FROM sqlite_master WHERE tbl_name = "' + table_name + '"')).iterate(0);
-            var columns = description.sql.match(new RegExp('CREATE[\s]+TABLE[\s]+' + table_name + '[\s]+(\([^\)]+)'));
-            var parts = columns.split(',');
-            for(var i = 0; i < parts.length; ++i)
-            {
-                //second half of the statement should instead return the type that it is
-                response[parts[i].replace(/(^\s+|\s+$)/g,'')] = parts[i].replace(/^\w+\s?/,'');
-            }
-            return response;
-        },
-        transaction: function transaction(proceed)
-        {
-            try
-            {
-                ActiveRecord.connection.executeSQL('BEGIN');
-                proceed();
-                ActiveRecord.connection.executeSQL('COMMIT');
-            }
-            catch(e)
-            {
-                ActiveRecord.connection.executeSQL('ROLLBACK');
-                throw e;
-            }
-        }
-    });
-};
-Adapters.Gears.DatabaseUnavailableError = 'ActiveRecord.Adapters.Gears could not find a Google Gears database to connect to.';
-Adapters.Gears.connect = function connect(name, version, display_name, size)
-{
-    var global_context = ActiveSupport.getGlobalContext();
-    var db = null;
-    
-    if(!(global_context.google && google.gears))
-    {
-        var gears_factory = null;
-        if('GearsFactory' in global_context)
-        {
-          gears_factory = new GearsFactory();
-        }
-        else if('ActiveXObject' in global_context)
-        {
-            try
-            {
-                gears_factory = new ActiveXObject('Gears.Factory');
-                if(gears_factory.getBuildInfo().indexOf('ie_mobile') !== -1)
-                {
-                    gears_factory.privateSetGlobalObject(this);
-                }
-            }
-            catch(e)
-            {
-                throw Adapters.Gears.DatabaseUnavailableError;
-            }
-        }
-        else if(('mimeTypes' in navigator) && ('application/x-googlegears' in navigator.mimeTypes))
-        {
-            gears_factory = ActiveSupport.getGlobalContext().document.createElement("object");
-            gears_factory.style.display = "none";
-            gears_factory.width = 0;
-            gears_factory.height = 0;
-            gears_factory.type = "application/x-googlegears";
-            ActiveSupport.getGlobalContext().document.documentElement.appendChild(gears_factory);
-        }
-        
-        if(!gears_factory)
-        {
-          throw Adapters.Gears.DatabaseUnavailableError;
-        }
-    
-        if(!('google' in global_context))
-        {
-          google = {};
-        }
-
-        if(!('gears' in google))
-        {
-            google.gears = {
-                factory: gears_factory
-            };
-        }
-    }
-
-    db = google.gears.factory.create('beta.database');
-    db.open(name || 'ActiveRecord');
-        
-    return new Adapters.Gears(db);
-};
- 
-/**
- * Adapter for Adobe AIR.
- * @alias ActiveRecord.Adapters.AIR
- * @property {ActiveRecord.Adapter}
- */ 
-Adapters.AIR = function AIR(connection){
-    this.connection = connection;
-    ActiveSupport.extend(this,Adapters.InstanceMethods);
-    ActiveSupport.extend(this,Adapters.SQLite);
-    ActiveSupport.extend(this,{
-        log: function log()
-        {
-            if(!ActiveRecord.logging)
-            {
-                return;
-            }
-            if(arguments[0])
-            {
-                arguments[0] = 'ActiveRecord: ' + arguments[0];
-            }
-            if(air.Introspector)
-            {
-                ActiveSupport.log.apply(ActiveSupport,arguments || []);
-            }
-            else
-            {
-                return null;
-            }
-        },
-        executeSQL: function executeSQL(sql)
-        {
-            ActiveRecord.connection.log("Adapters.AIR.executeSQL: " + sql + " [" + ActiveSupport.arrayFrom(arguments).slice(1).join(',') + "]");
-            this.statement = new air.SQLStatement();
-            this.statement.sqlConnection = this.connection;
-            this.statement.text = sql;
-            var parameters = ActiveSupport.arrayFrom(arguments).slice(1);
-            for(var i = 0; i < parameters.length; ++i)
-            {
-                this.statement.parameters[i] = parameters[i];
-            }
-            this.statement.execute();
-            return this.statement.getResult().data;
-        },
-        getLastInsertedRowId: function getLastInsertedRowId()
-        {
-            return this.connection.lastInsertRowID;
-        },
-        iterableFromResultSet: function iterableFromResultSet(result)
-        {
-            result.iterate = function iterate(iterator)
-            {
-                if (typeof(iterator) === 'number')
-                {
-                    if (this[iterator])
-                    {
-                        return ActiveSupport.clone(this[iterator]);
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    for (var i = 0; i < this.length; ++i)
-                    {
-                        iterator(this[i]);
-                    }
-                }
-            };
-            return result;
-        },
-        transaction: function transaction(proceed)
-        {
-            try
-            {
-                this.connection.begin();
-                proceed();
-                this.connection.commit();
-            }
-            catch(e)
-            {
-                this.connection.rollback();
-                throw e;
-            }
-        }
-    });
-};
-Adapters.AIR.connect = function connect(path)
-{
-    var connection = new air.SQLConnection();
-    connection.open(air.File.applicationDirectory.resolvePath(path || 'ActiveRecord'),air.SQLMode.CREATE);
-    return new Adapters.AIR(connection);
-};
 
 /**
  * In memory, non persistent storage.
@@ -4302,23 +4267,11 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
     {
         return ActiveSupport.JSON.stringify(this.storage);
     },
-    log: function log()
-    {
-        if(!ActiveRecord.logging)
-        {
-            return;
-        }
-        if(arguments[0])
-        {
-            arguments[0] = 'ActiveRecord: ' + arguments[0];
-        }
-        return ActiveSupport.log.apply(ActiveSupport,arguments || []);
-    },
     executeSQL: function executeSQL(sql)
     {
         ActiveRecord.connection.log('Adapters.InMemory could not execute SQL:' + sql);
     },
-    insertEntity: function insertEntity(table, data)
+    insertEntity: function insertEntity(table, primary_key_name, data)
     {
         this.setupTable(table);
         var max = 1;
@@ -4335,7 +4288,7 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
             data.id = max;
         }
         this.lastInsertId = data.id;
-        this.storage[table][max] = data;
+        this.storage[table][data.id] = data;
         this.notify('created',table,data.id,data);
         return true;
     },
@@ -4347,18 +4300,11 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
     {
         
     },
-    updateEntity: function updateEntity(table, id, data)
+    updateEntity: function updateEntity(table, primary_key_name, id, data)
     {
         this.setupTable(table);
         this.storage[table][id] = data;
         this.notify('updated',table,id,data);
-        return true;
-    },
-    updateAttribute: function updateAttribute(table, id, key, value)
-    {
-        this.setupTable(table);
-        this.storage[table][id][key] = value;
-        this.notify('updated',table,id,this.storage[table][id]);
         return true;
     },
     calculateEntities: function calculateEntities(table, params, operation)
@@ -4405,7 +4351,7 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
                 return operation_type === 'avg' ? sum / entities.length : sum;
         }
     },
-    deleteEntity: function deleteEntity(table, id)
+    deleteEntity: function deleteEntity(table, primary_key_name, id)
     {
         this.setupTable(table);
         if(!id || id === 'all')
@@ -4425,12 +4371,34 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
         }
         return false;
     },
+    findEntitiesById: function findEntitiesById(table, primary_key_name, ids)
+    {
+        var table_data = this.storage[table];
+        var response = [];
+        for(var i = 0; i < ids.length; ++i)
+        {
+            var id = ids[i];
+            if(table_data[id])
+            {
+                response.push(table_data[id]);
+            }
+        }
+        return this.iterableFromResultSet(response);
+    },
     findEntities: function findEntities(table, params)
     {
-        if (typeof(table) === 'string' && !params)
+        if (typeof(table) === 'string' && !table.match(/^\d+$/) && typeof(params) != 'object')
         {
             //find by SQL
-            var response = this.paramsFromSQLString(table);
+
+            //replace ? in SQL strings
+            var sql = table;
+            var sql_args = ActiveSupport.arrayFrom(arguments).slice(1);
+            for(var i = 0; i < sql_args.length; ++i)
+            {
+                sql = sql.replace(/\?/,ActiveRecord.escape(sql_args[i]));
+            }
+            var response = this.paramsFromSQLString(sql);
             table = response[0];
             params = response[1];
         }
@@ -4443,9 +4411,9 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
         var table_data = this.storage[table];
         if(params && params.where && params.where.id)
         {
-            if(table_data[parseInt(params.where.id, 10)])
+            if(table_data[params.where.id])
             {
-                entity_array.push(table_data[parseInt(params.where.id, 10)]);
+                entity_array.push(table_data[params.where.id]);
             }
         }
         else
@@ -4456,6 +4424,10 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
             }
         }
         var filters = [];
+        if(params && params.group)
+        {
+            filters.push(this.createGroupBy(params.group));
+        }
         if(params && params.where)
         {
             filters.push(this.createWhere(params.where));
@@ -4481,25 +4453,22 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
         var select_match = sql.match(select); 
         var table = select_match[1];
         sql = sql.replace(select,'');
-        var fragments = {
-            limit: 'LIMIT\s+',
-            order: 'ORDER\s+BY\s+',
-            where: ''
-        };
-        var where = sql.match(/\s+WHERE\s+(.+)(ORDER\s+BY\s+|LIMIT\s+|$)/i);
-        if(where)
+        var fragments = [
+            ['limit',/(^|\s+)LIMIT\s+(.+)$/i],
+            ['order',/(^|\s+)ORDER\s+BY\s+(.+)$/i],
+            ['group',/(^|\s+)GROUP\s+BY\s+(.+)$/i],
+            ['where',/(^|\s+)WHERE\s+(.+)$/i]
+        ];
+        for(var i = 0; i < fragments.length; ++i)
         {
-            params.where = where[1];
-        }
-        var order = sql.match(/ORDER\s+BY\s+(.+)(LIMIT\s+|$)/i);
-        if(order)
-        {
-            params.order = order[1];
-        }
-        var limit = sql.match(/LIMIT\s+(.+)$/);
-        if(limit)
-        {
-            params.limit = limit[1];
+            var param_name = fragments[i][0];
+            var matcher = fragments[i][1];
+            var match = sql.match(matcher);
+            if(match)
+            {
+                params[param_name] = match[2];
+                sql = sql.replace(matcher,'');
+            }
         }
         return [table,params];
     },
@@ -4517,7 +4486,7 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
         catch(e)
         {
             this.storage = backup;
-            throw e;
+            return ActiveSupport.throwError(e);
         }
     },
     /* PRVIATE */
@@ -4555,8 +4524,18 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
         }
     },
     createWhere: function createWhere(where)
-    {
-        if(typeof(where) === 'string'){
+    {   
+        if(ActiveSupport.isArray(where))
+        {
+            var where_fragment = where[0];
+            for(var i = 1; i < where.length; ++i)
+            {
+                where_fragment = where_fragment.replace(/\?/,ActiveRecord.escape(where[i]));
+            }
+            where = where_fragment;
+        }
+        if(typeof(where) === 'string')
+        {
             return function json_result_where_processor(result_set)
             {
                 var response = [];
@@ -4571,7 +4550,9 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
                 }
                 return response;
             };
-        }else{
+        }
+        else
+        {
             return function json_result_where_processor(result_set)
             {
                 var response = [];
@@ -4580,7 +4561,7 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
                     var included = true;
                     for(var column_name in where)
                     {
-                        if((new String(result_set[i][column_name]).toString()) != (new String(where[column_name]).toString()))
+                        if((String(result_set[i][column_name])) != (String(where[column_name])))
                         {
                             included = false;
                             break;
@@ -4601,6 +4582,31 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
         {
             return result_set.slice(offset || 0,limit);
         };
+    },
+    createGroupBy: function createGroupBy(group_by)
+    {
+        if(!group_by || group_by == '')
+        {
+            return function json_result_group_by_processor(result_set)
+            {
+                return result_set;
+            }
+        }
+        var group_key = group_by.replace(/(^[\s]+|[\s]+$)/g,'');
+        return function json_result_group_by_processor(result_set)
+        {
+            var response = [];
+            var indexed_by_group = {};
+            for(var i = 0; i < result_set.length; ++i)
+            {
+                indexed_by_group[result_set[i][group_key]] = result_set[i];
+            }
+            for(var group_key_value in indexed_by_group)
+            {
+                response.push(indexed_by_group[group_key_value]);
+            }
+            return response;
+        }
     },
     createOrderBy: function createOrderBy(order_by)
     {
@@ -4665,6 +4671,10 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
     },
     fieldIn: function fieldIn(field, value)
     {
+        if(value && value instanceof Date)
+        {
+            return ActiveSupport.dateFormat(value,'yyyy-mm-dd HH:MM:ss');
+        }
         if(Migrations.objectIsFieldDefinition(field))
         {
             field = this.getDefaultValueFromFieldDefinition(field);
@@ -4676,6 +4686,11 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
     {
         if(Migrations.objectIsFieldDefinition(field))
         {
+            //date handling
+            if(field.type.toLowerCase().match(/date/) && typeof(value) == 'string')
+            {
+                return ActiveSupport.dateFromDateTime(value);
+            }
             field = this.getDefaultValueFromFieldDefinition(field);
         }
         value = this.setValueFromFieldIfValueIsNull(field,value);
@@ -4683,7 +4698,7 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
     }
 });
 
-Adapters.InMemory.method_call_handler = function method_call_handler(name,args)
+Adapters.InMemory.method_call_handler = function method_call_handler(name,row,args)
 {
     if(!Adapters.InMemory.MethodCallbacks[name])
     {
@@ -4693,11 +4708,11 @@ Adapters.InMemory.method_call_handler = function method_call_handler(name,args)
     }
     if(!Adapters.InMemory.MethodCallbacks[name])
     {
-        throw Errors.MethodDoesNotExist;
+        return ActiveSupport.throwError(Errors.MethodDoesNotExist);
     }
     else
     {
-        return Adapters.InMemory.MethodCallbacks[name].apply(Adapters.InMemory.MethodCallbacks[name],args);
+        return Adapters.InMemory.MethodCallbacks[name].apply(Adapters.InMemory.MethodCallbacks[name],[row].concat(args || []));
     }
 };
 Adapters.InMemory.MethodCallbacks = (function(){
@@ -4707,7 +4722,7 @@ Adapters.InMemory.MethodCallbacks = (function(){
     {
         methods[math_methods[i]] = (function math_method_generator(i){
             return function generated_math_method(){
-                return Math[math_methods[i]].apply(Math.math_methods[i],arguments);
+                return Math[math_methods[i]].apply(Math.math_methods[i],ActiveSupport.arrayFrom(arguments).slice(1));
             };
         })(i);
     }
@@ -4755,7 +4770,7 @@ Adapters.Auto.connect = function connect()
 //var WhereLexer;
 var WhereParser;
 
-(function() {
+//(function() {
 
 // token types
 var $c$ = 0,
@@ -4767,6 +4782,7 @@ var $c$ = 0,
     GREATER_THAN       = $c$++,
     GREATER_THAN_EQUAL = $c$++,
     IDENTIFIER         = $c$++,
+    IN                 = $c$++,
     LESS_THAN          = $c$++,
     LESS_THAN_EQUAL    = $c$++,
     LPAREN             = $c$++,
@@ -4787,6 +4803,7 @@ TypeMap[FALSE]              = "FALSE";
 TypeMap[GREATER_THAN]       = "GREATER_THAN";
 TypeMap[GREATER_THAN_EQUAL] = "GREATER_THAN_EQUAL";
 TypeMap[IDENTIFIER]         = "IDENTIFIER";
+TypeMap[IN]                 = "IN";
 TypeMap[LESS_THAN]          = "LESS_THAN";
 TypeMap[LESS_THAN_EQUAL]    = "LESS_THAN_EQUAL";
 TypeMap[LPAREN]             = "LPAREN";
@@ -4815,15 +4832,16 @@ var OperatorMap = {
 var KeywordMap = {
     "and":   AND,
     "false": FALSE,
+    "in":    IN,
     "or":    OR,
     "true":  TRUE
 };
 
 // Lexer token patterns
 var WHITESPACE_PATTERN = /^\s+/;
-var IDENTIFIER_PATTERN = /^[a-zA-Z][a-zA-Z]*/;
+var IDENTIFIER_PATTERN = /^[a-zA-Z\_][a-zA-Z\_]*/;
 var OPERATOR_PATTERN   = /^(?:&&|\|\||<=|<|=|!=|>=|>|,|\(|\))/i;
-var KEYWORD_PATTERN    = /^(true|or|false|and)\b/i;
+var KEYWORD_PATTERN    = /^(true|or|in|false|and)\b/i;
 var STRING_PATTERN     = /^(?:'(\\.|[^'])*'|"(\\.|[^"])*")/;
 var NUMBER_PATTERN     = /^[1-9][0-9]*/;
 
@@ -4832,7 +4850,7 @@ var currentLexeme;
 
 // *** Lexeme class ***
 
-/**
+/*
  * Lexeme
  * 
  * @param {Number} type
@@ -4845,7 +4863,7 @@ function Lexeme(type, text)
     this.text = text;
 }
 
-/**
+/*
  * toString
  * 
  * @return {String}
@@ -4864,7 +4882,7 @@ Lexeme.prototype.toString = function toString()
 
 // *** Lexer class ***
 
-/**
+/*
  * WhereLexer
  */
 function WhereLexer()
@@ -4873,7 +4891,7 @@ function WhereLexer()
     this.setSource(null);
 }
 
-/**
+/*
  * setSource
  * 
  * @param {String} source
@@ -4887,7 +4905,7 @@ WhereLexer.prototype.setSource = function setSource(source)
     currentLexeme = null;
 };
 
-/**
+/*
  * advance
  */
 WhereLexer.prototype.advance = function advance()
@@ -4967,8 +4985,8 @@ WhereLexer.prototype.advance = function advance()
 
 // Binary operator node
 
-/**
- * IdentifierNode
+/*
+ * BinaryOperatorNode
  * 
  * @param {Node} identifier
  * @param {Number} identifier
@@ -4981,7 +4999,7 @@ function BinaryOperatorNode(lhs, operator, rhs)
     this.rhs = rhs;
 }
 
-/**
+/*
  * execute
  * 
  * @param {Object} row
@@ -4991,44 +5009,65 @@ BinaryOperatorNode.prototype.execute = function execute(row, functionProvider)
 {
     var result = null;
     var lhs = this.lhs.execute(row, functionProvider);
-    var rhs = this.rhs.execute(row, functionProvider);
-    
-    switch (this.operator)
+
+    if (this.operator == IN)
     {
-        case EQUAL:
-            result = (lhs === rhs);
-            break;
-            
-        case NOT_EQUAL:
-            result = (lhs !== rhs);
-            break;
-            
-        case LESS_THAN:
-            result = (lhs < rhs);
-            break;
-            
-        case LESS_THAN_EQUAL:
-            result = (lhs <= rhs);
-            break;
-            
-        case GREATER_THAN:
-            result = (lhs > rhs);
-            break;
-            
-        case GREATER_THAN_EQUAL:
-            result = (lhs >= rhs);
-            break;
-            
-        case AND:
-            result = (lhs && rhs);
-            break;
-            
-        case OR:
-            result = (lhs || rhs);
-            break;
-            
-        default:
-            throw new Error("Unknown operator type: " + this.operator);
+        // assume failure
+        result = false;
+
+        // see if the lhs value is in the rhs list
+        for (var i = 0; i < this.rhs.length; i++)
+        {
+            var rhs = this.rhs[i].execute(row, functionProvider);
+
+            if (lhs == rhs)
+            {
+                result = true;
+                break;
+            }
+        }
+    }
+    else
+    {
+        var rhs = this.rhs.execute(row, functionProvider);
+        
+        switch (this.operator)
+        {
+            case EQUAL:
+                result = (lhs === rhs);
+                break;
+                
+            case NOT_EQUAL:
+                result = (lhs !== rhs);
+                break;
+                
+            case LESS_THAN:
+                result = (lhs < rhs);
+                break;
+                
+            case LESS_THAN_EQUAL:
+                result = (lhs <= rhs);
+                break;
+                
+            case GREATER_THAN:
+                result = (lhs > rhs);
+                break;
+                
+            case GREATER_THAN_EQUAL:
+                result = (lhs >= rhs);
+                break;
+                
+            case AND:
+                result = (lhs && rhs);
+                break;
+                
+            case OR:
+                result = (lhs || rhs);
+                break;
+                
+            default:
+                return ActiveSupport.throwError(new Error("Unknown operator type: " + this.operator));
+        }
     }
     
     return result;
@@ -5036,7 +5075,7 @@ BinaryOperatorNode.prototype.execute = function execute(row, functionProvider)
 
 // Identifer node
 
-/**
+/*
  * Parser.IdentifierNode
  * 
  * @param {Object} identifier
@@ -5046,7 +5085,7 @@ function IdentifierNode(identifier)
     this.identifier = identifier;
 }
 
-/**
+/*
  * execute
  * 
  * @param {Object} row
@@ -5059,7 +5098,7 @@ IdentifierNode.prototype.execute = function execute(row, functionProvider)
 
 // Function node
 
-/**
+/*
  * FunctionNode
  * 
  * @param {String} name
@@ -5071,7 +5110,7 @@ function FunctionNode(name, args)
     this.args = args;
 }
 
-/**
+/*
  * execute
  * 
  * @param {Object} row
@@ -5088,12 +5127,12 @@ FunctionNode.prototype.execute = function execute(row, functionProvider)
     }
 
     // evaluate function and return result
-    return functionProvider(this.name, args);
+    return functionProvider(this.name, row, args);
 };
 
 // Scalar node
 
-/**
+/*
  * Parser.ScalarNode
  */
 function ScalarNode(value)
@@ -5101,7 +5140,7 @@ function ScalarNode(value)
     this.value = value;
 }
 
-/**
+/*
  * execute
  * 
  * @param {Object} row
@@ -5115,7 +5154,7 @@ ScalarNode.prototype.execute = function execute(row, functionProvider)
 
 // Parser class
 
-/**
+/*
  * WhereParser
  */
 WhereParser = function WhereParser()
@@ -5123,7 +5162,7 @@ WhereParser = function WhereParser()
     this._lexer = new WhereLexer();
 };
 
-/**
+/*
  * parse
  * 
  * @param {String} source
@@ -5153,18 +5192,71 @@ WhereParser.prototype.parse = function parse(source)
             case NUMBER:
             case STRING:
             case TRUE:
-                result = this.parseOrExpression();
+                result = this.parseInExpression();
                 break;
 
             default:
                 throw new Error("Unrecognized starting token in where-clause:" + this._lexer.currentLexeme);
+                return ActiveSupport.throwError(new Error("Unrecognized starting token in where-clause:" + this._lexer.currentLexeme));
+        }
+    }
+    return result;
+};
+
+/*
+ * parseWhereExpression
+ */
+WhereParser.prototype.parseInExpression = function parseInExpression()
+{
+    var result = this.parseOrExpression();
+
+    while (currentLexeme !== null && currentLexeme.type === IN) 
+    {
+        // advance over 'in'
+        this._lexer.advance();
+
+        var rhs = [];
+
+        if (currentLexeme !== null && currentLexeme.type === LPAREN)
+        {
+            // advance over '('
+            this._lexer.advance();
+
+            while (currentLexeme !== null)
+            {
+                rhs.push(this.parseOrExpression());
+
+                if (currentLexeme !== null && currentLexeme.type === COMMA)
+                {
+                    this._lexer.advance();
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            if (currentLexeme !== null && currentLexeme.type === RPAREN)
+            {
+                this._lexer.advance();
+
+                result = new BinaryOperatorNode(result, IN, rhs);
+            }
+            else
+            {
+                return ActiveSupport.throwError(new Error("'in' list did not end with a right parenthesis." + currentLexeme));
+            }
+        }
+        else
+        {
+            return ActiveSupport.throwError(new Error("'in' list did not start with a left parenthesis"));
         }
     }
 
     return result;
 };
 
-/**
+/*
  * parseOrExpression
  */
 WhereParser.prototype.parseOrExpression = function parseOrExpression()
@@ -5184,7 +5276,7 @@ WhereParser.prototype.parseOrExpression = function parseOrExpression()
     return result;
 };
 
-/**
+/*
  * parseAndExpression
  */
 WhereParser.prototype.parseAndExpression = function parseAndExpression()
@@ -5204,7 +5296,7 @@ WhereParser.prototype.parseAndExpression = function parseAndExpression()
     return result;
 };
 
-/**
+/*
  * parseEqualityExpression
  */
 WhereParser.prototype.parseEqualityExpression = function parseEqualityExpression()
@@ -5232,7 +5324,7 @@ WhereParser.prototype.parseEqualityExpression = function parseEqualityExpression
     return result;
 };
 
-/**
+/*
  * parseRelationalExpression
  */
 WhereParser.prototype.parseRelationalExpression = function()
@@ -5262,7 +5354,7 @@ WhereParser.prototype.parseRelationalExpression = function()
     return result;
 };
 
-/**
+/*
  * parseMemberExpression
  */
 WhereParser.prototype.parseMemberExpression = function parseMemberExpression()
@@ -5275,7 +5367,6 @@ WhereParser.prototype.parseMemberExpression = function parseMemberExpression()
         {
             case IDENTIFIER:
                 result = new IdentifierNode(currentLexeme.text);
-
                 // advance over identifier
                 this._lexer.advance();
 
@@ -5307,7 +5398,7 @@ WhereParser.prototype.parseMemberExpression = function parseMemberExpression()
                     }
                     else 
                     {
-                        throw new Error("Function argument list was not closed with a right parenthesis.");
+                        return ActiveSupport.throwError(new Error("Function argument list was not closed with a right parenthesis."));
                     }
                 }
                 break;
@@ -5355,7 +5446,7 @@ WhereParser.prototype.parseMemberExpression = function parseMemberExpression()
                 }
                 else
                 {
-                    throw new Error("Missing closing right parenthesis: " + currentLexeme);
+                    return ActiveSupport.throwError(new Error("Missing closing right parenthesis: " + currentLexeme));
                 }
                 break;
         }
@@ -5365,7 +5456,7 @@ WhereParser.prototype.parseMemberExpression = function parseMemberExpression()
 };
 
 
-})();
+//})();
 
 //ActiveRecord.WhereLexer = WhereLexer;
 ActiveRecord.WhereParser = WhereParser;
@@ -5429,13 +5520,6 @@ ActiveRecord.Finders = Finders;
  */
 var ResultSet = {};
 
-ResultSet.extend = function extend(result_set,params,model){
-    for(var method_name in ResultSet.InstanceMethods)
-    {
-        result_set[method_name] = ActiveSupport.curry(ResultSet.InstanceMethods[method_name],result_set,params,model);
-    }
-};
-
 ResultSet.InstanceMethods = {
     /**
      * Re-runs the query that generated the result set. This modifies the
@@ -5449,6 +5533,21 @@ ResultSet.InstanceMethods = {
         {
             result_set.push(new_response[i]);
         }
+    },
+    /**
+     * Builds an array calling toObject() on each instance in the result
+     * set, thus reutrning a vanilla array of vanilla objects.
+     * @alias ActiveRecord.ResultSet.toArray
+     * @return {Array}
+     */
+    toArray: function toArray(result_set,params,model)
+    {
+        var items = [];
+        for(var i = 0; i < result_set.length; ++i)
+        {
+            items.push(result_set[i].toObject());
+        }
+        return items;
     },
     /**
      * @alias ActiveRecord.ResultSet.toJSON
@@ -5482,13 +5581,13 @@ var Relationships = {
     normalizeModelName: function(related_model_name)
     {
         var plural = ActiveSupport.camelize(related_model_name, true);
-        var singular = ActiveSupport.Inflector.singularize(plural);
+        var singular = ActiveSupport.Inflector.singularize(plural) || plural;
         return singular || plural;
     },
     normalizeForeignKey: function(foreign_key, related_model_name)
     {
         var plural = ActiveSupport.underscore(related_model_name).toLowerCase();
-        var singular = ActiveSupport.Inflector.singularize(plural);
+        var singular = ActiveSupport.Inflector.singularize(plural) || plural;
         if (!foreign_key || typeof(foreign_key) === 'undefined')
         {
             return (singular || plural) + '_id';
@@ -5536,7 +5635,7 @@ ActiveRecord.ClassMethods.hasOne = function hasOne(related_model_name, options)
         var id = this.get(foreign_key);
         if (id)
         {
-            return ActiveRecord.Models[related_model_name].find(id);
+            return ActiveRecord.Models[related_model_name].get(id);
         }
         else
         {
@@ -5548,9 +5647,9 @@ ActiveRecord.ClassMethods.hasOne = function hasOne(related_model_name, options)
     }, related_model_name, foreign_key);
     instance_methods['create' + relationship_name] = ActiveSupport.curry(function createRelated(related_model_name, foreign_key, params){
         var record = ActiveRecord.Models[related_model_name].create(params || {});
-        if(this.get('id'))
+        if(this.get(this.constructor.primaryKeyName))
         {
-            this.updateAttribute(foreign_key, record.get('id'));
+            this.updateAttribute(foreign_key, record.get(record.constructor.primaryKeyName));
         }
         return record;
     }, related_model_name, foreign_key);
@@ -5629,14 +5728,14 @@ ActiveRecord.ClassMethods.hasMany = function hasMany(related_model_name, options
             {
                 params.where = {};
             }
-            params.where[foreign_key] = this.get('id');
+            params.where[foreign_key] = this.get(this.constructor.primaryKeyName);
             return ActiveRecord.Models[through_model_name].count(params);
         }, through_model_name, related_model_name, foreign_key);
     }
     else
     {
-        instance_methods['destroy' + relationship_name] = class_methods['destroy' + relationship_name] = ActiveSupport.curry(function destroyRelated(related_model_name, foreign_key,params){
-            var record = ActiveRecord.Models[related_model_name].find((params && typeof(params.get) === 'function') ? params.get('id') : params);
+        instance_methods['destroy' + relationship_name] = class_methods['destroy' + relationship_name] = ActiveSupport.curry(function destroyRelated(related_model_name, foreign_key, params){
+            var record = ActiveRecord.Models[related_model_name].find((params && typeof(params.get) === 'function') ? params.get(params.constructor.primaryKeyName) : params);
             if (record)
             {
                 return record.destroy();
@@ -5648,6 +5747,11 @@ ActiveRecord.ClassMethods.hasMany = function hasMany(related_model_name, options
         }, related_model_name, foreign_key);
 
         instance_methods['get' + relationship_name + 'List'] = ActiveSupport.curry(function getRelatedList(related_model_name, foreign_key, params){
+            var id = this.get(this.constructor.primaryKeyName);
+            if(!id)
+            {
+                return this.constructor.resultSetFromArray([]);
+            }
             if(!params)
             {
                 params = {};
@@ -5664,12 +5768,17 @@ ActiveRecord.ClassMethods.hasMany = function hasMany(related_model_name, options
             {
                 params.where = {};
             }
-            params.where[foreign_key] = this.get('id');
+            params.where[foreign_key] = id;
             params.all = true;
             return ActiveRecord.Models[related_model_name].find(params);
         }, related_model_name, foreign_key);
 
         instance_methods['get' + relationship_name + 'Count'] = ActiveSupport.curry(function getRelatedCount(related_model_name, foreign_key, params){
+            var id = this.get(this.constructor.primaryKeyName);
+            if(!id)
+            {
+                return 0;
+            }
             if(!params)
             {
                 params = {};
@@ -5678,25 +5787,27 @@ ActiveRecord.ClassMethods.hasMany = function hasMany(related_model_name, options
             {
                 params.where = {};
             }
-            params.where[foreign_key] = this.get('id');
+            params.where[foreign_key] = id;
             return ActiveRecord.Models[related_model_name].count(params);
         }, related_model_name, foreign_key);
 
         instance_methods['build' + relationship_name] = ActiveSupport.curry(function buildRelated(related_model_name, foreign_key, params){
+            var id = this.get(this.constructor.primaryKeyName);
             if(!params)
             {
                 params = {};
             }
-            params[foreign_key] = this.get('id');
+            params[foreign_key] = id;
             return ActiveRecord.Models[related_model_name].build(params);
         }, related_model_name, foreign_key);
 
         instance_methods['create' + relationship_name] = ActiveSupport.curry(function createRelated(related_model_name, foreign_key, params){
+            var id = this.get(this.constructor.primaryKeyName);
             if(!params)
             {
                 params = {};
             }
-            params[foreign_key] = this.get('id');
+            params[foreign_key] = id;
             return ActiveRecord.Models[related_model_name].create(params);
         }, related_model_name, foreign_key);
     }
@@ -5754,7 +5865,7 @@ ActiveRecord.ClassMethods.belongsTo = function belongsTo(related_model_name, opt
         var id = this.get(foreign_key);
         if (id)
         {
-            return ActiveRecord.Models[related_model_name].find(id);
+            return ActiveRecord.Models[related_model_name].get(id);
         }
         else
         {
@@ -5771,9 +5882,9 @@ ActiveRecord.ClassMethods.belongsTo = function belongsTo(related_model_name, opt
     }, related_model_name, foreign_key);
     instance_methods['create' + relationship_name] = ActiveSupport.curry(function createRelated(related_model_name, foreign_key, params){
         var record = this['build' + related_model_name](params);
-        if(record.save() && this.get('id'))
+        if(record.save() && this.get(this.constructor.primaryKeyName))
         {
-            this.updateAttribute(foreign_key, record.get('id'));
+            this.updateAttribute(foreign_key, record.get(record.constructor.primaryKeyName));
         }
         return record;
     }, related_model_name, foreign_key);
@@ -5795,7 +5906,7 @@ ActiveRecord.ClassMethods.belongsTo = function belongsTo(related_model_name, opt
                 child.updateAttribute(options.counter, Math.max(0, parseInt(current_value, 10) - 1));
             }
         });
-        this.observe('afterCreate', function incrimentBelongsToCounter(record){
+        this.observe('afterCreate', function incrementBelongsToCounter(record){
             var child = record['get' + relationship_name]();
             if(child)
             {
@@ -5813,11 +5924,15 @@ ActiveRecord.ClassMethods.belongsTo = function belongsTo(related_model_name, opt
 /**
  * @namespace {ActiveRecord.Migrations}
  * @example
+ * 
+ * Migrations
+ * ----------
+ * 
  * Migrations are a method of versioining the database schema used by your
  * application. All of your migrations must be defined in an object assigned
  * to ActiveRecord.Migrations.migrations. The keys need not be numerically
  * sequential, but must be numeric (i.e. 1,2,3 or 100,200,300).
- *
+ * 
  * Each migration object must have an up() and down() method which will
  * recieve an ActiveRecord.Migrations.Schema object. createTable() and
  * addColumn() both use the same syntax as define() to specify default
@@ -5852,7 +5967,6 @@ ActiveRecord.ClassMethods.belongsTo = function belongsTo(related_model_name, opt
  *     ActiveRecord.Migrations.migrate(0); //migrates down below 1, effectively erasing the schema
  *     ActiveRecord.Migrations.migrate(1); //migrates to version 1
  */
-
 var Migrations = {
     fieldTypesWithDefaultValues: {
         'tinyint': 0,
@@ -5860,10 +5974,10 @@ var Migrations = {
         'mediumint': 0,
         'int': 0,
         'integer': 0,
-        'bitint': 0,
+        'bigint': 0,
         'float': 0,
         'double': 0,
-        'bouble precision': 0,
+        'double precision': 0,
         'real': 0,
         'decimal': 0,
         'numeric': 0,
@@ -5967,22 +6081,22 @@ var Migrations = {
      */
     max: function max()
     {
-        var maxVal = 0;
+        var max_val = 0;
         for(var key_name in Migrations.migrations)
         {
             key_name = parseInt(key_name, 10);
-            if(key_name > maxVal)
+            if(key_name > max_val)
             {
-                maxVal = key_name;
+                max_val = key_name;
             }
         }
-        return maxVal;
+        return max_val;
     },
     setup: function setMigrationsTable()
     {
         if(!Migrations.Meta)
         {
-            Migrations.Meta = ActiveRecord.define('schema_migrations',{
+            Migrations.Meta = ActiveRecord.create('schema_migrations',{
                 version: 0
             });
             delete ActiveRecord.Models.SchemaMigrations;
@@ -6038,40 +6152,6 @@ var Migrations = {
             migrations.push([keys[i],Migrations.migrations[keys[i]]]);
         }
         return migrations;
-    },
-    applyTypeConversionCallbacks: function applyTypeConversionCallbacks(model,fields)
-    {
-        model.observe('afterInitialize', function applyFieldOut(record){
-            for (var key in fields)
-            {
-                var value = ActiveRecord.connection.fieldOut(fields[key], record.get(key));
-                if(Migrations.objectIsFieldDefinition(value))
-                {
-                    value = value.value;
-                }
-                record.set(key,value);
-            }
-        });
-        model.observe('beforeSave', function applyFieldIn(record){
-            for (var key in fields)
-            {
-                record.set(key,ActiveRecord.connection.fieldIn(fields[key], record.get(key)));
-            }
-        });
-        model.observe('afterSave', function applyFieldOut(record){
-            for (var key in fields)
-            {
-                record.set(key,ActiveRecord.connection.fieldOut(fields[key], record.get(key)));
-            }
-        });
-        for (var key in fields)
-        {
-            Finders.generateFindByField(model, key);
-            Finders.generateFindAllByField(model, key);
-        }
-        Finders.generateFindByField(model, 'id');
-        //illogical, but consistent
-        Finders.generateFindAllByField(model, 'id');
     },
     objectIsFieldDefinition: function objectIsFieldDefinition(object)
     {
@@ -6139,50 +6219,6 @@ var Migrations = {
     }
 };
 
-/**
- * If the table for your ActiveRecord does not exist, this will define the
- * ActiveRecord and automatically create the table.
- * @alias ActiveRecord.define
- * @param {String} table_name
- * @param {Object} fields
- *      Should consist of column name, default value pairs. If an empty array or empty object is set as the default, any arbitrary data can be set and will automatically be serialized when saved. To specify a specific type, set the value to an object that contains a "type" key, with optional "length" and "value" keys.
- * @param {Object} [methods]
- * @param {Function} [readyCallback]
- *      Must be specified if running in asynchronous mode.
- * @return {Object}
- * @example
- * 
- *     var User = ActiveRecord.define('users',{
- *         name: '',
- *         password: '',
- *         comment_count: 0,
- *         profile: {
- *             type: 'text',
- *             value: ''
- *         },
- *         serializable_field: {}
- *     });
- *     var u = User.create({
- *         name: 'alice',
- *         serializable_field: {a: '1', b: '2'}
- *     }); 
- */
-ActiveRecord.define = function define(table_name, fields, methods)
-{
-    //clean field definition
-    for(var field_name in fields)
-    {
-        if(typeof(fields[field_name]) === 'object' && fields[field_name].type && !('value' in fields[field_name]))
-        {
-            fields[field_name].value = null;
-        }
-    }
-    var model = ActiveRecord.create(table_name,methods);
-    Migrations.Schema.createTable(table_name,fields);
-    Migrations.applyTypeConversionCallbacks(model,fields);
-    return model;
-};
-
 ActiveRecord.Migrations = Migrations;
 
 ActiveSupport.extend(ActiveRecord.ClassMethods,{
@@ -6230,7 +6266,7 @@ ActiveSupport.extend(ActiveRecord.ClassMethods,{
         },options || {});
         //will run in scope of an ActiveRecord instance
         this.addValidator(function validates_length_of_callback(){
-            var value = new String(this.get(field));
+            var value = String(this.get(field));
             if (value.length < options.min)
             {
                 this.addError(options.message || (field + ' is too short.'));
@@ -6277,7 +6313,7 @@ ActiveSupport.extend(ActiveRecord.InstanceMethods,{
         {
             this.valid();
         }
-        ActiveRecord.connection.log('ActiveRecord.valid()? ' + (new String(this._errors.length === 0).toString()) + (this._errors.length > 0 ? '. Errors: ' + (new String(this._errors)).toString() : ''));
+        ActiveRecord.connection.log('ActiveRecord.valid()? ' + String(this._errors.length === 0) + (this._errors.length > 0 ? '. Errors: ' + String(this._errors) : ''));
         return this._errors.length === 0;
     },
     _getValidators: function _getValidators()
@@ -6306,7 +6342,7 @@ Synchronization.notifications = {};
 
 Synchronization.setupNotifications = function setupNotifications(record)
 {
-    if(!record.id)
+    if(!record.get(record.constructor.primaryKeyName))
     {
         return false;
     }
@@ -6314,9 +6350,9 @@ Synchronization.setupNotifications = function setupNotifications(record)
     {
         Synchronization.notifications[record.tableName] = {};
     }
-    if(!Synchronization.notifications[record.tableName][record.id])
+    if(!Synchronization.notifications[record.tableName][record[record.constructor.primaryKeyName]])
     {
-        Synchronization.notifications[record.tableName][record.id] = {};
+        Synchronization.notifications[record.tableName][record[record.constructor.primaryKeyName]] = {};
     }    
     return true;
 };
@@ -6330,7 +6366,7 @@ Synchronization.triggerSynchronizationNotifications = function triggerSynchroniz
     }
     if(event_name === 'afterSave')
     {
-        found_records = Synchronization.notifications[record.tableName][record.id];
+        found_records = Synchronization.notifications[record.tableName][record[record.constructor.primaryKeyName]];
         for(internal_count_id in found_records)
         {
             if(internal_count_id !== record.internalCount)
@@ -6379,14 +6415,14 @@ Synchronization.triggerSynchronizationNotifications = function triggerSynchroniz
         }
         if(event_name === 'afterDestroy')
         {
-            found_records = Synchronization.notifications[record.tableName][record.id];
+            found_records = Synchronization.notifications[record.tableName][record[record.constructor.primaryKeyName]];
             for(internal_count_id in found_records)
             {
                 if(internal_count_id !== record.internalCount)
                 {
                     found_records[internal_count_id].notify('synchronization:afterDestroy');
-                    Synchronization.notifications[record.tableName][record.id][internal_count_id] = null;
-                    delete Synchronization.notifications[record.tableName][record.id][internal_count_id];
+                    Synchronization.notifications[record.tableName][record[record.constructor.primaryKeyName]][internal_count_id] = null;
+                    delete Synchronization.notifications[record.tableName][record[record.constructor.primaryKeyName]][internal_count_id];
                 }
             }
         }
@@ -6406,7 +6442,7 @@ ActiveSupport.extend(ActiveRecord.InstanceMethods,{
         {
             this.isSynchronized = true;
             Synchronization.setupNotifications(this);
-            Synchronization.notifications[this.tableName][this.id][this.internalCount] = this;
+            Synchronization.notifications[this.tableName][this[this.constructor.primaryKeyName]][this.internalCount] = this;
         }
     },
     /**
@@ -6417,8 +6453,8 @@ ActiveSupport.extend(ActiveRecord.InstanceMethods,{
     stop: function stop()
     {
         Synchronization.setupNotifications(this);
-        Synchronization.notifications[this.tableName][this.id][this.internalCount] = null;
-        delete Synchronization.notifications[this.tableName][this.id][this.internalCount];
+        Synchronization.notifications[this.tableName][this[this.constructor.primaryKeyName]][this.internalCount] = null;
+        delete Synchronization.notifications[this.tableName][this[this.constructor.primaryKeyName]][this.internalCount];
     }
 });
 
@@ -6484,7 +6520,7 @@ Synchronization.spliceArgumentsFromResultSetDiff = function spliceArgumentsFromR
     {
         for(var i = 0; i < b.length; ++i)
         {
-            if(!a[i] || (a[i] && (a[i].id !== b[i].id)))
+            if(!a[i] || (a[i] && (a[i][a[i].constructor.primaryKeyName] !== b[i][b[i].constructor.primaryKeyName])))
             {
                 diffs.push([i,null,b[i]]);
                 break;
@@ -6495,7 +6531,7 @@ Synchronization.spliceArgumentsFromResultSetDiff = function spliceArgumentsFromR
     {
         for(var i = 0; i < a.length; ++i)
         {
-            if(!b[i] || (b[i] && (b[i].id !== a[i].id)))
+            if(!b[i] || (b[i] && (b[i][b[i].constructor.primaryKeyName] !== a[i][a[i].constructor.primaryKeyName])))
             {
                 diffs.push([i,1]);
                 break;
@@ -6509,14 +6545,488 @@ ActiveRecord.Synchronization = Synchronization;
 
 })();
 
+(function(){
+
+/**
+ * Adapter for browsers supporting a SQL implementation (Gears, HTML5).
+ * @alias ActiveRecord.Adapters.Gears
+ * @property {ActiveRecord.Adapter}
+ */
+ActiveRecord.Adapters.Gears = function Gears(db){
+    this.db = db;
+    ActiveSupport.extend(this,ActiveRecord.Adapters.InstanceMethods);
+    ActiveSupport.extend(this,ActiveRecord.Adapters.SQLite);
+    ActiveSupport.extend(this,{
+        executeSQL: function executeSQL(sql)
+        {
+            var args = ActiveSupport.arrayFrom(arguments);
+            ActiveRecord.connection.log("Adapters.Gears.executeSQL: " + sql + " [" + args.slice(1).join(',') + "]");
+            var response = ActiveRecord.connection.db.execute(sql,args.slice(1));
+            return response;
+        },
+        getLastInsertedRowId: function getLastInsertedRowId()
+        {
+            return this.db.lastInsertRowId;
+        },
+        iterableFromResultSet: function iterableFromResultSet(result)
+        {
+            var response = {
+                rows: []
+            };
+            var count = result.fieldCount();
+            var fieldNames = [];
+            for(var i = 0; i < count; ++i)
+            {
+                fieldNames[i] = result.fieldName(i);
+            }
+            while(result.isValidRow())
+            {
+                var row = {};
+                for(var i = 0; i < count; ++i)
+                {
+                    row[fieldNames[i]] = result.field(i);
+                }
+                response.rows.push(row);
+                result.next();
+            }
+            result.close();
+            response.iterate = ActiveRecord.Adapters.defaultResultSetIterator;
+            return response;
+        },
+        fieldListFromTable: function(table_name)
+        {
+            var response = {};
+            var description = ActiveRecord.connection.iterableFromResultSet(ActiveRecord.connection.executeSQL('SELECT * FROM sqlite_master WHERE tbl_name = "' + table_name + '"')).iterate(0);
+            var columns = description.sql.match(new RegExp('CREATE[\s]+TABLE[\s]+' + table_name + '[\s]+(\([^\)]+)'));
+            var parts = columns.split(',');
+            for(var i = 0; i < parts.length; ++i)
+            {
+                //second half of the statement should instead return the type that it is
+                response[parts[i].replace(/(^\s+|\s+$)/g,'')] = parts[i].replace(/^\w+\s?/,'');
+            }
+            return response;
+        }
+    });
+};
+ActiveRecord.Adapters.Gears.DatabaseUnavailableError = 'ActiveRecord.Adapters.Gears could not find a Google Gears database to connect to.';
+ActiveRecord.Adapters.Gears.connect = function connect(name, version, display_name, size)
+{
+    var global_context = ActiveSupport.getGlobalContext();
+    var db = null;
+    
+    if(!(global_context.google && google.gears))
+    {
+        var gears_factory = null;
+        if('GearsFactory' in global_context)
+        {
+            gears_factory = new GearsFactory();
+        }
+        else if('ActiveXObject' in global_context)
+        {
+            try
+            {
+                gears_factory = new ActiveXObject('Gears.Factory');
+                if(gears_factory.getBuildInfo().indexOf('ie_mobile') !== -1)
+                {
+                    gears_factory.privateSetGlobalObject(this);
+                }
+            }
+            catch(e)
+            {
+                return ActiveSupport.throwError(ActiveRecord.Adapters.Gears.DatabaseUnavailableError);
+            }
+        }
+        else if(('mimeTypes' in navigator) && ('application/x-googlegears' in navigator.mimeTypes))
+        {
+            gears_factory = ActiveSupport.getGlobalContext().document.createElement("object");
+            gears_factory.style.display = "none";
+            gears_factory.width = 0;
+            gears_factory.height = 0;
+            gears_factory.type = "application/x-googlegears";
+            ActiveSupport.getGlobalContext().document.documentElement.appendChild(gears_factory);
+        }
+        
+        if(!gears_factory)
+        {
+            return ActiveSupport.throwError(ActiveRecord.Adapters.Gears.DatabaseUnavailableError);
+        }
+        
+        if(!('google' in global_context))
+        {
+            google = {};
+        }
+        
+        if(!('gears' in google))
+        {
+            google.gears = {
+                factory: gears_factory
+            };
+        }
+    }
+
+    db = google.gears.factory.create('beta.database');
+    db.open(typeof name == 'undefined' ? 'ActiveRecord' : name);
+        
+    return new ActiveRecord.Adapters.Gears(db);
+};
+
+})();
+
 var ActiveView = null;
 
 (function(){
-
+ 
+/**
+ * @namespace {ActiveView}
+ * @example
+ * 
+ * ActiveView
+ * ==========
+ * ActiveView allows for the creation of complex, stateful views. ActiveView
+ * requires a paradigm shift in view programming away from ERB/PHP/ASP, but
+ * will result in significantly more compartmentalized and reusable code.
+ * The basic flow of a view goes like this: 
+ * 
+ * - Create DOM nodes with the Builder library.
+ * - Bind data to those nodes or sub views with the Binding library.
+ * - Observe DOM events with the Ajax library of your choice.
+ * 
+ * Use ActiveView.create() to create a new class. The first parameter to
+ * the class creator is a function in which all of your view logic is,
+ * declared, followed by an option second paramter of instance methods the
+ * view will have.
+ * 
+ *     var MyView = ActiveView.create(function(){
+ *         //DOM creation code (Builder)
+ *         //data binding code (Binding)
+ *         //Ajax / DOM event observation code (Prototype, jQuery, etc)
+ *     },{instance_methods});
+ * 
+ * The only requirement of the main function is that it return a DOM node.
+ * MyView is now a constructor which can be called with a scope / hash.
+ * Data that is passed into the view can be retrieved with get() and set().
+ * Once initialized, the DOM node returned by the main function will be
+ * available in the "container" property. The convenience method "attachTo"
+ * will attach the container to a given Element.
+ * 
+ *     var MyView = ActiveView.create(function(){
+ *         return this.builder.h2(this.get('title'));
+ *     },{instance_methods});
+ *     var instance = new MyView({title: 'The Title'});
+ *     document.body.appendChild(instance.container);
+ *     //or
+ *     instance.attachTo(document.body);
+ * 
+ * The scope property (accessed with get() / set()) is an ObservableHash,
+ * so you can observe changes in the view data like so:
+ * 
+ *     instance.scope.observe('set',function(key,value){});
+ * 
+ * Builder
+ * -------
+ * The builder object in each template contains a collection of methods for
+ * each standard HTML tag name, b(), span(), h1(), etc. All of these methods
+ * are also available statically as ActiveView.Builder.tagName anywhere in
+ * your application.
+ * 
+ * Each method returns a DOM node type corresponding to it's name.
+ * 
+ *     var MyView = ActiveView.create(function(){
+ *         return this.builder.div();
+ *     });
+ * 
+ * Each method can accept a variable number of arguments including other DOM
+ * nodes or an array of DOM nodes.
+ * 
+ *     var MyView = ActiveView.create(function(){
+ *         var container = this.builder.div(
+ *             this.builder.span('Some text.')
+ *         );
+ *         return container;
+ *     });
+ *     
+ * You can use the "with" construct to eliminate the need to call tyhis.builder.
+ * The "with" construct has some side effects (var label = div() would overwrite
+ * the label() method globally for instance) that may be difficult to debug, but
+ * when used carefully it can make for more readable code.
+ *     
+ *     var MyView = ActiveView.create(function(){
+ *         with(this.builder){
+ *             var container = div(span('Some text.'));
+ *         }
+ *         return container;
+ *     });
+ *     
+ * Builder methods can also accept a hash of attributes, text nodes, or functions
+ * that return text or DOM nodes, in any order. If a Builder method requires no
+ * parameters (hr, br, etc) you can declare it without parenthesis.
+ * 
+ * Note that you can assign DOM nodes to local variables or properties of "this"
+ * inline (a language feature, not a  library feature). This technique comes in
+ * handy when you want to attach behaviors to your elements without having to
+ * query for them.
+ *     
+ *     var MyView = ActiveView.create(function(){
+ *         with(this.builder){
+ *             this.myDiv = div(
+ *                 ul(
+ *                     li({className: 'first'},'List Item One'),
+ *                     li('List Item Two'),
+ *                     li(
+ *                         b(span('List item Three')),
+ *                         'Extra Text',
+ *                         {className:'third'}
+ *                     ),
+ *                     li(function(){
+ *                         return 'List Item Four';
+ *                     })
+ *                 ),
+ *                 br,
+ *                 this.secondList = ul([
+ *                     li('List Item One'),
+ *                     li('List Item Two')
+ *                 ])
+ *             );
+ *         }
+ *         return this.myDiv;
+ *     });
+ * 
+ * Lastly, you can embed other views inside any builder node. You can either
+ * initialize a view, or just pass the class. If only the class is passed,
+ * the instance of the class that is created will inherit the scope of the
+ * current view.
+ * 
+ *     var MyView = ActiveView.create(function(){
+ *         with(this.builder){
+ *             var container = div({className: 'result_set_container'},
+ *                 PaginationView,
+ *                 hr,
+ *                 new ResultSetView({
+ *                     result_set: my_result_set
+ *                 })
+ *             );
+ *         }
+ *     });
+ * 
+ * Enabling Prototype / jQuery Element Extensions
+ * ----------------------------------------------
+ * By default the DOM nodes generated by Builder will be standard unextended
+ * Element objects regardless of the Ajax framework you are using. It is
+ * however quite useful to have those nodes automatically be compatible
+ * with your framework of choice (although you will take a performance hit).
+ * 
+ * To enable this feature add this code anywhere in your application:
+ * 
+ *     //for Prototype
+ *     ActiveView.Builder.extendCreatedElement = function extendCreatedElement(element){
+ *         return Element.extend(element);
+ *     };
+ * 
+ *     //for jQuery
+ *     ActiveView.Builder.extendCreatedElement = function extendCreatedElement(element){
+ *         return jQuery(element)[0];
+ *     };
+ *     
+ *     //alternates for above, and most other frameworks
+ *     ActiveView.Builder.extendCreatedElement = function extendCreatedElement(element){
+ *         return $(element);
+ *     };
+ *     
+ * Once enabled this allows you to do your typical Ajax framework programming right
+ * in your view. Notice that because you already have access to those objects as
+ * DOM elements that you do not need to query for them or worry if or when they
+ * become attached to the document.
+ * 
+ *     with(this.builder){
+ *         var container = div(
+ *             this.linkOne = a({href: '#'},'Link One'),
+ *             this.linkTwo = a({href: '#'},'Link Two')
+ *         );
+ *     }
+ *     this.linkOne.observe('click',function(){});
+ *     this.linkTwo.hide();
+ * 
+ * Data Binding
+ * ------------
+ * Each view instance has a data scope associated with it which can be accessed
+ * with the get() and set() methods. In a stateless (server) enviornment data
+ * bindings are not needed, one can simply insert data directly into the DOM.
+ * 
+ *     var MyView = ActiveView.create(function(){
+ *         return this.builder.h2(this.get('title'));
+ *     });
+ * 
+ * However in a stateful (client side) enviornment it is often useful to
+ * automatically update the DOM as data in the view changes. Apple has a
+ * [useful article about Cocoa data bindings](http://developer.apple.com/documentation/Cocoa/Conceptual/CocoaBindings/Concepts/WhatAreBindings.html)
+ * that explains the concept very well. ActiveView data bindings are
+ * vastly simpler and offer fewer features, but provide the same general
+ * functionality.
+ * 
+ * There are three core "sentance" structures that are used
+ * to create your bindings:
+ * 
+ * - update(element).from(key)
+ * - when(key).changes(callback)
+ * - collect(active_view_class).from(key).into(element)
+ * 
+ * These are accessed from the "binding" property of any view.
+ * 
+ * The first construct, update(element).from(key) will set the content
+ * of the specified element to the value of the specificed key
+ * whenever the value of the key changes.
+ *
+ *     update(title_container).from('title');
+ * 
+ * You can update a particular attribute of an element by passing a key
+ * name to update(), or pull a particular key from another object by
+ * passing both an object and a key to from() (that object must however
+ * fire "get" and "set" events like ObservableHash, ActiveRecord or
+ * ActiveView).
+ * 
+ *     update(image_element,'src').from('image_src');
+ *     update(image_element,'src').from(image_active_record,'src');
+ * 
+ * The second construct is a generic way of observing when a key changes.
+ * When "key" changes, the callback function will be called with the
+ * new value.
+ * 
+ *     var MyView = ActiveView.create(function(){
+ *         var container = this.builder.h2();
+ *         with(this.binding){
+ *             update(container).from('title');
+ *             when('title').changes(function(title){
+ *                 console.log('title was changed to:',title);
+ *             });
+ *         }
+ *         return container;
+ *     });
+ *     var instance = new MyView({title: 'The Title'});
+ *     //instance.container == <h2>The Title</h2>
+ *     instance.set('title','New Title');
+ *     //instance.container == <h2>New Title</h2>
+ *     
+ * The third construct is the data binding equivelent of a loop. It
+ * will iterate over a given array, render a new view with each item
+ * in that array, collecting the resulting DOM nodes and inserting it
+ * into the given container. If the array is modified with pop(),
+ * push(), shift(), unshift() or splice() the resulting DOM nodes will
+ * be inserted, updated or removed.
+ * 
+ *     var ListView = ActiveView.create(function(){
+ *         var container = this.builder.ul();
+ *         with(this.binding){
+ *             collect(ListItemView).from('items').into(container);
+ *         }
+ *         return container;
+ *     });
+ *     var ListItemView = ActiveView.create(function(){
+ *         var container = this.builder.li();
+ *         with(this.binding){
+ *             update(container).from('body');
+ *         }
+ *         return container;
+ *     });
+ *     var items = [
+ *         {body: 'one'},
+ *         {body: 'two'},
+ *         {body: 'three'}
+ *     ];
+ *     var instance = new ListView(items);
+ *     //instance.container == <ul><li>one</li><li>two</li><li>three</li></ul>
+ *     items.pop();
+ *     //instance.container == <ul><li>one</li><li>two</li></ul>
+ * 
+ * The collect() method will also accept a function that returns an Element
+ * in place of an ActiveView class.
+ * 
+ * ActiveRecord Data Binding Integration
+ * -------------------------------------
+ * Data bindings can be programmed and triggered directly as described above
+ * but significant integration is built right into ActiveRecord. Each
+ * ActiveRecord instance has a synchronize() method that will trigger the
+ * individual key data bindings (when() and update())
+ *     
+ *     var Article = ActiveRecord.create({
+ *         title: '',
+ *         body: ''
+ *     });
+ *     
+ *     var article_one = Article.create({
+ *         title: 'First Title',
+ *         body: 'First Body'
+ *     });
+ *     article_one.synchronize();
+ *     
+ *     var ArticleView = ActiveView.create(function(){
+ *         with(this.builder){
+ *             var container = div(
+ *                 this.titleContainer = h2(),
+ *                 this.bodyContainer = p()
+ *             );
+ *         }
+ *         with(this.binding){
+ *             update(this.titleContainer).from('title');
+ *             update(this.bodyContainer).from('body');
+ *         }
+ *         return container;
+ *     });
+ *     
+ *     var article_one_view = new ArticleView(article_one);
+ *     //article_one_view.container == <div><h2>First Title</h2><p>First Body</p></div>
+ *     
+ *     article_one.set('title','New Title');
+ *     article_one.save();
+ *     //article_one_view.container == <div><h2>New Title</h2><p>First Body</p></div>
+ * 
+ * ActiveRecord.ResultSet objects are designed to integrate with the collect()
+ * data binding construct. If a result set should change as a result of records
+ * matching it's conditions being included or excluded, it will update the DOM
+ * accordingly.
+ * 
+ *     var ArticleListView = ActiveView.create(function(){
+ *         var container = this.builder.div();
+ *         this.binding.collect(ArticleView).from('list').into(container);
+ *         return container;
+ *     });
+ *     var articles = Article.find({
+ *         all: true,
+ *         synchronize: true
+ *     });
+ *     var article_list_instance = new ArticleListView({
+ *         list: articles
+ *     });
+ *     //article_list_instance.container == <div><h2>New Title...
+ *     
+ *     Article.create({
+ *         title: 'Second Title',
+ *         body: 'Second Body'
+ *     });
+ *     //articles.length == 2
+ *     //article_list_instance.container == <div><h2>New Title...<h2>Second Title...
+ * 
+ * Because the query matched all records, and the newly created article would fall
+ * within that result set, the result set was automatically updated (a result of
+ * the synchronize parameter) and the DOM was automatically udpated to match this
+ * (a result of our collect() data binding call).
+ * 
+ */
 ActiveView = {};
 
+/**
+ * Defaults to false.
+ * @alias ActiveView.logging
+ * @property {Boolean}
+ */
 ActiveView.logging = false;
 
+/**
+ * Creates a new ActiveView class. The structure function must return a DOM node.
+ * @alias ActiveView.create
+ * @param {Function} structure
+ * @param {Object} [instance_methods]
+ * @return {ActiveView}
+ */
 ActiveView.create = function create(structure,methods)
 {
     if(typeof(options) === 'function')
@@ -6538,7 +7048,7 @@ ActiveView.create = function create(structure,methods)
 
 ActiveView.defaultStructure = function defaultStructure()
 {
-    return ActiveSupport.getGlobalContext().document.createElement('div');
+    return ActiveView.Builder.div();
 };
 
 ActiveView.makeArrayObservable = function makeArrayObservable(array)
@@ -6551,147 +7061,213 @@ ActiveView.makeArrayObservable = function makeArrayObservable(array)
     array.makeObservable('splice');
 };
 
-ActiveView.render = function render(content,target,scope,clear,execute)
+/**
+ * This method is not usually called directly but is utilized by data
+ * bindings and ActiveControllers.
+ * 
+ * This method is normalizes or renders a variety of inputs. Strings or
+ * Element objects are returned untouched, ActiveView instances will have
+ * their DOM container returned, ActiveView classes will be rendered and
+ * the DOM container returned. If a function is passed in it will be called
+ * with the passed scope. That function should return a string or Element.
+ * 
+ * @alias ActiveView.render
+ * @param {mixed} content
+ * @param {Object} [scope]
+ * @return {mixed}
+ */
+ActiveView.render = function render(content,scope)
 {
-    if(content && typeof(content) == 'object' && 'length' in content && 'splice' in content && 'join' in content)
+    if(!scope)
     {
-        var responses = [];
-        for(var i = 0; i < content.length; ++i)
-        {
-            responses.push(ActiveView.render(content[i],target,scope,clear,execute));
-        }
-        return responses;
+        scope = {};
     }
-    else
+    
+    //if content is a function, that function can return nodes or an ActiveView class or instance
+    if(typeof(content) === 'function' && !ActiveView.isActiveViewClass(content))
     {
-        if(!execute)
-        {
-            execute = function render_execute(target,content)
-            {
-                if(!content)
-                {
-                    throw Errors.InvalidContent;
-                }
-                target.appendChild(content);
-            };
-        }
-        if(typeof(content) === 'function' && !content.prototype.structure)
-        {
-            content = content(scope);
-        }
-        if(clear !== false)
-        {
-            target.innerHTML = '';
-        }
-        if(typeof(content) === 'string')
-        {
-            target.innerHTML = content;
-            return content;
-        }
-        else if(content && content.nodeType === 1)
-        {
-            execute(target,content);
-            return content;
-        }
-        else if(content && content.container)
-        {
-          //is ActiveView instance
-          execute(target,content.container);
-          return view;
-        }
-        else if(content && content.prototype && content.prototype.structure)
-        {
-            //is ActiveView class
-            var view = new content(scope);
-            execute(target,view.container);
-            return view;
-        }
-        else
-        {
-            throw Errors.InvalidContent;
-        }
+        content = content(scope);
     }
+    
+    if(content && (typeof(content) == 'string' || content.nodeType == 1))
+    {
+        return content;
+    }
+    else if(ActiveView.isActiveViewInstance(content))
+    {
+        return content.container;
+    }
+    else if(ActiveView.isActiveViewClass(content))
+    {
+        return new content(scope).container;
+    }
+    return ActiveSupport.throwError(Errors.InvalidContent);
 };
 
-var InstanceMethods = {
-    initialize: function initialize(scope,parent)
-    {
-        this.parent = parent;
-        this.setupScope(scope);
-        if(ActiveView.logging)
-        {
-            ActiveSupport.log('ActiveView: initialized with scope:',scope);
-        }
-        this.builder = ActiveView.Builder;
-        ActiveView.generateBinding(this);
-        this.container = this.structure();
-        if(!this.container || !this.container.nodeType || this.container.nodeType !== 1)
-        {
-            throw Errors.ViewDoesNotReturnContainer + typeof(this.container);
-        }
-        for(var key in this.scope._object)
-        {
-            this.scope.set(key,this.scope._object[key]);
-        }
-    },
-    setupScope: function setupScope(scope)
-    {
-        this.scope = (scope ? (scope.toObject ? scope : new ActiveEvent.ObservableHash(scope)) : new ActiveEvent.ObservableHash({}));
-        for(var key in this.scope._object)
-        {
-            var item = this.scope._object[key];
-            if((item !== null && typeof item === "object" && 'splice' in item && 'join' in item) && !item.observe)
-            {
-                ActiveView.makeArrayObservable(item);
-            }
-        }
-    },
-    get: function get(key)
-    {
-        return this.scope.get(key);
-    },
-    set: function set(key,value)
-    {
-        if((value !== null && typeof value === "object" && 'splice' in value && 'join' in value) && !value.observe)
-        {
-            ActiveView.makeArrayObservable(value);
-        }
-        return this.scope.set(key,value);
-    },
-    registerEventHandler: function registerEventHandler(element,event_name,observer)
-    {
-      this.eventHandlers.push([element,event_name,observer]);
-    }
+ActiveView.isActiveViewInstance = function isActiveViewInstance(object)
+{
+    return object && object.container && object.container.nodeType == 1 && object.scope && object.builder;
 };
+
+ActiveView.isActiveViewClass = function isActiveViewClass(object)
+{
+    return object && object.prototype && object.prototype.structure && object.prototype.setupScope && object.prototype.registerEventHandler;
+};
+
+var InstanceMethods = (function(){
+    return {
+        initialize: function initialize(scope,parent)
+        {
+            this.parent = parent;
+            this.setupScope(scope);
+            if(ActiveView.logging)
+            {
+                ActiveSupport.log('ActiveView: initialized with scope:',scope);
+            }
+            this.builder = {};
+            Builder.generator(this.builder,this.scope);
+            ActiveView.generateBinding(this);
+            this.container = this.structure();
+            if(!this.container || !this.container.nodeType || this.container.nodeType !== 1)
+            {
+                return ActiveSupport.throwError(Errors.ViewDoesNotReturnContainer,typeof(this.container),this.container);
+            }
+            for(var key in this.scope._object)
+            {
+                this.scope.set(key,this.scope._object[key]);
+            }
+        },
+        setupScope: function setupScope(scope)
+        {
+            this.scope = (scope ? (scope.toObject ? scope : new ActiveEvent.ObservableHash(scope)) : new ActiveEvent.ObservableHash({}));
+            for(var key in this.scope._object)
+            {
+                var item = this.scope._object[key];
+                if((item !== null && typeof item === "object" && 'splice' in item && 'join' in item) && !item.observe)
+                {
+                    ActiveView.makeArrayObservable(item);
+                }
+            }
+        },
+        /**
+         * @alias ActiveView.prototype.get
+         * @param {String} key
+         * @return {mixed}
+         */
+        get: function get(key)
+        {
+            return this.scope.get(key);
+        },
+        /**
+         * @alias ActiveView.prototype.set
+         * @param {String} key
+         * @param {mixed} value
+         * @return {mixed}
+         */
+        set: function set(key,value)
+        {
+            if((value !== null && typeof value === "object" && 'splice' in value && 'join' in value) && !value.observe)
+            {
+                ActiveView.makeArrayObservable(value);
+            }
+            return this.scope.set(key,value);
+        },
+        /**
+         * @alias ActiveView.prototype.attachTo
+         * @param {Element} element
+         * @return {Element}
+         */
+        attachTo: function attachTo(element)
+        {
+            element.appendChild(this.container);
+            return this.container;
+        },
+        registerEventHandler: function registerEventHandler(element,event_name,observer)
+        {
+            this.eventHandlers.push([element,event_name,observer]);
+        }
+    };
+})();
 
 var ClassMethods = {
 
 };
 
 var Errors = {
-    ViewDoesNotReturnContainer: 'The view constructor must return a DOM element. Returned: ',
-    InvalidContent: 'The content to render was not a string, DOM element or ActiveView.',
-    MismatchedArguments: 'Incorrect argument type passed: '
+    ViewDoesNotReturnContainer: ActiveSupport.createError('The view constructor must return a DOM element. Returned: '),
+    InvalidContent: ActiveSupport.createError('The content to render was not a string, DOM element or ActiveView.'),
+    MismatchedArguments: ActiveSupport.createError('Incorrect argument type passed: ')
 };
 
 var Builder = {
-    createElement: function createElement(tag,attributes)
+    tags: ('A ABBR ACRONYM ADDRESS APPLET AREA B BASE BASEFONT BDO BIG BLOCKQUOTE BODY ' +
+        'BR BUTTON CAPTION CENTER CITE CODE COL COLGROUP DD DEL DFN DIR DIV DL DT EM EMBED FIELDSET ' +
+        'FONT FORM FRAME FRAMESET H1 H2 H3 H4 H5 H6 HEAD HR HTML I IFRAME IMG INPUT INS ISINDEX '+
+        'KBD LABEL LEGEND LI LINK MAP MENU META NOFRAMES NOSCRIPT OBJECT OL OPTGROUP OPTION P '+
+        'PARAM PRE Q S SAMP SCRIPT SELECT SMALL SPAN STRIKE STRONG STYLE SUB SUP TABLE TBODY TD '+
+        'TEXTAREA TFOOT TH THEAD TITLE TR TT U UL VAR').split(/\s+/),
+    ieAttributeTranslations: {
+        'class': 'className',
+        'checked': 'defaultChecked',
+        'usemap': 'useMap',
+        'for': 'htmlFor',
+        'readonly': 'readOnly',
+        'colspan': 'colSpan',
+        'bgcolor': 'bgColor',
+        'cellspacing': 'cellSpacing',
+        'cellpadding': 'cellPadding'
+    },
+    cache: {},
+    createElement: function createElement(tag_name,attributes)
     {
         var global_context = ActiveSupport.getGlobalContext();
         var ie = !!(global_context.attachEvent && !global_context.opera);
         attributes = attributes || {};
-        tag = tag.toLowerCase();
-        if(ie && attributes.name)
+        tag_name = tag_name.toLowerCase();
+        var element;
+        if(ie && (attributes.name || (tag_name == 'input' && attributes.type)))
         {
-            tag = '<' + tag + ' name="' + attributes.name + '">';
+            //ie needs these attributes to be written in the string passed to createElement
+            tag = '<' + tag_name;
+            if(attributes.name)
+            {
+                tag += ' name="' + attributes.name + '"';
+            }
+            if(tag_name == 'input' && attributes.type)
+            {
+                tag += ' type="' + attributes.type + '"';
+            }
+            tag += '>';
             delete attributes.name;
+            delete attributes.type;
+            element = Builder.extendCreatedElement(global_context.document.createElement(tag));
         }
-        var element = global_context.document.createElement(tag);
+        else
+        {
+            if(!Builder.cache[tag_name])
+            {
+                Builder.cache[tag_name] = Builder.extendCreatedElement(global_context.document.createElement(tag_name));
+            }
+            element = Builder.cache[tag_name].cloneNode(false);
+        }
         Builder.writeAttribute(element,attributes);
+        return element;
+    },
+    clearElement: function clearElement(element)
+    {
+        while(element.firstChild)
+        {
+            element.removeChild(element.firstChild);
+        }
+    },
+    extendCreatedElement: function extendCreatedElement(element)
+    {
         return element;
     },
     writeAttribute: function writeAttribute(element,name,value)
     {
+        var global_context = ActiveSupport.getGlobalContext();
+        var ie = !!(global_context.attachEvent && !global_context.opera);
         var transitions = {
             className: 'class',
             htmlFor:   'for'
@@ -6719,7 +7295,21 @@ var Builder = {
             }
             else
             {
-                element.setAttribute(name,value);
+                if(!ie)
+                {
+                    element.setAttribute(name,value);
+                }
+                else
+                {
+                    if(name == 'style')
+                    {
+                        element.style.cssText = value;
+                    }
+                    else
+                    {
+                        element.setAttribute(Builder.ieAttributeTranslations[name] || name,value);
+                    }
+                }
             }
         }
         return element;
@@ -6730,19 +7320,13 @@ var Builder = {
     }
 };
 
-(function builder_generator(){
-    var tags = ("A ABBR ACRONYM ADDRESS APPLET AREA B BASE BASEFONT BDO BIG BLOCKQUOTE BODY " +
-        "BR BUTTON CAPTION CENTER CITE CODE COL COLGROUP DD DEL DFN DIR DIV DL DT EM FIELDSET " +
-        "FONT FORM FRAME FRAMESET H1 H2 H3 H4 H5 H6 HEAD HR HTML I IFRAME IMG INPUT INS ISINDEX "+
-        "KBD LABEL LEGEND LI LINK MAP MENU META NOFRAMES NOSCRIPT OBJECT OL OPTGROUP OPTION P "+
-        "PARAM PRE Q S SAMP SCRIPT SELECT SMALL SPAN STRIKE STRONG STYLE SUB SUP TABLE TBODY TD "+
-        "TEXTAREA TFOOT TH THEAD TITLE TR TT U UL VAR").split(/\s+/);
+Builder.generator = function generator(target,scope){
     var global_context = ActiveSupport.getGlobalContext();
-    for(var t = 0; t < tags.length; ++t)
+    for(var t = 0; t < Builder.tags.length; ++t)
     {
-        var tag = tags[t];
+        var tag = Builder.tags[t];
         (function tag_iterator(tag){
-            Builder[tag.toLowerCase()] = Builder[tag] = function tag_generator(){
+            target[tag.toLowerCase()] = target[tag] = function tag_generator(){
                 var i, argument, attributes, text_nodes, elements, element;
                 text_nodes = [];
                 elements = [];
@@ -6753,11 +7337,19 @@ var Builder = {
                     {
                         continue;
                     }
-                    if(typeof(argument) === 'function')
+                    if(typeof(argument) === 'function' && !ActiveView.isActiveViewClass(argument))
                     {
                         argument = argument();
                     }
-                    if(typeof(argument) !== 'string' && typeof(argument) !== 'number' && !(argument !== null && typeof argument === "object" && 'splice' in argument && 'join' in argument) && !(argument && argument.nodeType === 1))
+                    if(ActiveView.isActiveViewInstance(argument))
+                    {
+                        elements.push(argument.container);
+                    }
+                    else if(ActiveView.isActiveViewClass(argument))
+                    {
+                        elements.push(new argument(scope._object || {}).container);
+                    }
+                    else if(typeof(argument) !== 'string' && typeof(argument) !== 'number' && !(argument !== null && typeof argument === "object" && 'splice' in argument && 'join' in argument) && !(argument && argument.nodeType === 1))
                     {
                         attributes = argument;
                     }
@@ -6773,14 +7365,29 @@ var Builder = {
                 element = Builder.createElement(tag,attributes);
                 for(i = 0; i < elements.length; ++i)
                 {
-                    element.appendChild((elements[i] && elements[i].nodeType === 1) ? elements[i] : global_context.document.createTextNode((new String(elements[i])).toString()));
+                    if(elements[i] && elements[i].nodeType === 1)
+                    {
+                        element.appendChild(elements[i]);
+                    }
+                    else
+                    {
+                        element.appendChild(global_context.document.createTextNode(String(elements[i])));
+                    }
                 }
                 return element;
             };
         })(tag);
     }
-})();
+};
+Builder.generator(Builder);
 
+/**
+ * Contains all DOM generator methods, b(), h1(), etc. This object can
+ * always be referenced statically as ActiveView.Builder, but is also
+ * available as this.builder inside of ActiveView classes.
+ * @alias ActiveView.Builder
+ * @property {Object}
+ */
 ActiveView.Builder = Builder;
 
 ActiveView.generateBinding = function generateBinding(instance)
@@ -6790,7 +7397,12 @@ ActiveView.generateBinding = function generateBinding(instance)
     {
         if(!element || !element.nodeType === 1)
         {
-            throw Errors.MismatchedArguments + 'expected Element, recieved ' + typeof(element);
+            return ActiveSupport.throwError(Errors.MismatchedArguments,'expected Element, recieved ',typeof(element),element);
+        }
+        var attribute = false;
+        if(arguments[1] && typeof(arguments[1]) == 'string')
+        {
+            attribute = arguments[1];
         }
         return {
             from: function from(observe_key)
@@ -6811,7 +7423,7 @@ ActiveView.generateBinding = function generateBinding(instance)
                 {
                     if(!callback || typeof(callback) !== 'function')
                     {
-                        throw Errors.MismatchedArguments + 'expected Function, recieved ' + typeof(callback);
+                        return ActiveSupport.throwError(Errors.MismatchedArguments,'expected Function, recieved ',typeof(callback),callback);
                     }
                     transformation = callback;
                     return {
@@ -6823,7 +7435,7 @@ ActiveView.generateBinding = function generateBinding(instance)
                 {
                     if(!callback || typeof(callback) !== 'function')
                     {
-                        throw Errors.MismatchedArguments + 'expected Function, recieved ' + typeof(callback);
+                        return ActiveSupport.throwError(Errors.MismatchedArguments,'expected Function, recieved ',typeof(callback),callback);
                     }
                     condition = callback;
                     return {
@@ -6836,7 +7448,27 @@ ActiveView.generateBinding = function generateBinding(instance)
                     {
                         if(condition())
                         {
-                            element.innerHTML = transformation ? transformation(value) : value;
+                            var formatted_value = transformation ? transformation(value) : value;
+                            if(attribute)
+                            {
+                                ActiveView.Builder.writeAttribute(element,attribute,formatted_value);
+                            }
+                            else
+                            {
+                                ActiveView.Builder.clearElement(element);
+                                if(formatted_value && formatted_value.nodeType === 1)
+                                {
+                                    element.appendChild(formatted_value);
+                                }
+                                else if(typeof(formatted_value) == 'string' || typeof(formatted_value) == 'number' || typeof(formatted_value) == 'boolean')
+                                {
+                                    element.appendChild(ActiveSupport.getGlobalContext().document.createTextNode(String(formatted_value)));
+                                }
+                                else
+                                {
+                                    return ActiveSupport.throwError(Errors.MismatchedArguments,'expected Element or string in update binding observer, recieved ',typeof(element),element);
+                                }
+                            }
                         }
                     }
                 });
@@ -6853,21 +7485,21 @@ ActiveView.generateBinding = function generateBinding(instance)
     {
         if(!view)
         {
-            throw Errors.MismatchedArguments + 'expected string, ActiveView class or function, recieved ' + typeof(view);
+            return ActiveSupport.throwError(Errors.MismatchedArguments,'expected string, ActiveView class or function, recieved ',typeof(view),view);
         }
         return {
             from: function from(collection)
             {
                 if(!collection || (typeof(collection) !== 'object' && typeof(collection) !== 'string'))
                 {
-                    throw Errors.MismatchedArguments + 'expected array, recieved ' + typeof(collection);
+                    return ActiveSupport.throwError(Errors.MismatchedArguments,'expected array, recieved ',typeof(collection),collection);
                 }
                 return {
                     into: function into(element)
                     {
                         if(!element || !element.nodeType === 1)
                         {
-                            throw Errors.MismatchedArguments + 'expected Element, recieved ' + typeof(element);
+                            return ActiveSupport.throwError(Errors.MismatchedArguments,'expected Element, recieved ',typeof(element),element);
                         }
                         //if a string is passed make sure that the view is re-built when the key is set
                         if(typeof(collection) === 'string')
@@ -6876,7 +7508,7 @@ ActiveView.generateBinding = function generateBinding(instance)
                             instance.scope.observe('set',function collection_key_change_observer(key,value){
                                 if(key == collection_name)
                                 {
-                                    element.innerHTML = '';
+                                    ActiveView.Builder.clearElement(element);
                                     instance.binding.collect(view).from(value).into(element);
                                 }
                             });
@@ -6887,7 +7519,8 @@ ActiveView.generateBinding = function generateBinding(instance)
                             var collected_elements = [];
                             for(var i = 0; i < collection.length; ++i)
                             {
-                                ActiveView.render(view,element,collection[i],false);
+                                var generated_element = ActiveView.render(view,collection[i]);
+                                element.appendChild(generated_element);
                                 collected_elements.push(element.childNodes[element.childNodes.length - 1]);
                             }
                             //these handlers will add or remove elements from the view as the collection changes
@@ -6898,13 +7531,13 @@ ActiveView.generateBinding = function generateBinding(instance)
                                     collected_elements.pop();
                                 });
                                 collection.observe('push',function push_observer(item){
-                                    ActiveView.render(view,element,item,false);
+                                    var generated_element = ActiveView.render(view,item);
+                                    element.appendChild(generated_element);
                                     collected_elements.push(element.childNodes[element.childNodes.length - 1]);
                                 });
                                 collection.observe('unshift',function unshift_observer(item){
-                                    ActiveView.render(view,element,item,false,function unshift_observer_render_executor(element,content){
-                                        element.insertBefore(content,element.firstChild);
-                                    });
+                                    var generated_element = ActiveView.render(view,item);
+                                    element.insertBefore(generated_element,element.firstChild);
                                     collected_elements.unshift(element.firstChild);
                                 });
                                 collection.observe('shift',function shift_observer(){
@@ -6912,6 +7545,7 @@ ActiveView.generateBinding = function generateBinding(instance)
                                     collected_elements.shift(element.firstChild);
                                 });
                                 collection.observe('splice',function splice_observer(index,to_remove){
+                                    var global_context = ActiveSupport.getGlobalContext();
                                     var children = [];
                                     var i;
                                     for(i = 2; i < arguments.length; ++i)
@@ -6927,10 +7561,12 @@ ActiveView.generateBinding = function generateBinding(instance)
                                     }
                                     for(i = 0; i < children.length; ++i)
                                     {
-                                        ActiveView.render(view,element,children[i],false,function splice_observer_render_executor(element,content){
-                                            element.insertBefore(typeof(content) === 'string' ? document.createTextNode(content) : content,element.childNodes[index + i]);
-                                            children[i] = element.childNodes[index + i];
-                                        });
+                                        var generated_element = ActiveView.render(view,children[i]);
+                                        element.insertBefore((typeof(generated_element) === 'string'
+                                            ? global_context.document.createTextNode(generated_element)
+                                            : generated_element
+                                        ),element.childNodes[index + i]);
+                                        children[i] = element.childNodes[index + i];
                                     }
                                     collected_elements.splice.apply(collected_elements,[index,to_remove].concat(children));
                                 });
@@ -6944,17 +7580,33 @@ ActiveView.generateBinding = function generateBinding(instance)
 
     instance.binding.when = function when(outer_key)
     {
+        var outer_keys;
+        if(arguments.length > 1)
+        {
+            outer_keys = ActiveSupport.arrayFrom(arguments);
+        }
+        else if(ActiveSupport.isArray(outer_key))
+        {
+            outer_keys = outer_key;
+        }
+        else
+        {
+            outer_keys = [outer_key];
+        }
         return {
             changes: function changes(callback)
             {
                 if(!callback || typeof(callback) !== 'function')
                 {
-                    throw Errors.MismatchedArguments + 'expected Function, recieved ' + typeof(callback);
+                    return ActiveSupport.throwError(Errors.MismatchedArguments,'expected Function, recieved ',typeof(callback),callback);
                 }
                 instance.scope.observe('set',function changes_observer(inner_key,value){
-                    if(outer_key == inner_key)
+                    for(var i = 0; i < outer_keys.length; ++i)
                     {
-                        callback(value);
+                        if(outer_keys[i] == inner_key)
+                        {
+                            callback(value);
+                        }
                     }
                 });
             }
@@ -6962,26 +7614,152 @@ ActiveView.generateBinding = function generateBinding(instance)
     };
 };
 
+/**
+ * @alias ActiveView.Template
+ * @constructor
+ * @param {String} src
+ * @param {Object} [helpers]
+ * @return {ActiveView.Template}
+ * @example
+ * 
+ * String Based Templating
+ * -----------------------
+ * Original implementation by [John Resig](http://ejohn.org/)
+ * 
+ * ActiveView.Template provides a string based templating approach that
+ * is similar to ERB, ASP or PHP.
+ * 
+ *     var template_one = new ActiveView.Template('<h1><%= title %></h1>');
+ *     template_one.render({title: 'The Title'});
+ *     //<h1>The Title</h1>
+ * 
+ * Each template class can accept a hash of helper functions as the second
+ * argument. To add helpers to all ActiveView.Template classes, you can 
+ * add properties to ActiveView.Template.Helpers.
+ * 
+ *     var template_two = new ActiveView.Template('<h1><%= i(title) %></h1>',{
+ *         i: function(text){
+ *             return '<i>' + text + '</i>';
+ *         }
+ *     });
+ *     template_two.render({title: 'The Title'});
+ *     //<h1><i>The Title</i></h1>
+ * 
+ * You can embed JavaScript with logic (loops, conditions, etc) within your
+ * template source. John Resig [points out](http://ejohn.org/blog/javascript-micro-templating/)
+ * that you can place the template source code in your page using a script tag with an
+ * unknown content type to get the browser to ignore it (but stil have access to it via the DOM).
+ * 
+ *     <script type="text/html" id="complex_template_source">
+ *         <h2><%= title %></h2>
+ *         <ul>
+ *             <% for(var i = 0; i < list.length; ++i){ %>
+ *                 <li><%= list[i] %></li>
+ *             <% } %>
+ *         </ul>
+ *     </script>
+ * 
+ * Then in your code:
+ * 
+ *     var complex_template = new ActiveView.Template($('complex_template_source').innerHTML);
+ * 
+ */
+ActiveView.Template = function Template(src,helpers)
+{
+    this.helpers = {};
+    ActiveSupport.extend(this.helpers,helpers || {});
+    ActiveSupport.extend(this.helpers,ActiveView.Template.Helpers);
+    this.template = ActiveView.Template.generateTemplate(src);
+    ActiveSupport.extend(this,ActiveView.Template.InstanceMethods);
+};
+
+ActiveView.Template.generateTemplate = function generateTemplate(source)
+{
+    try
+    {
+        // Original Implementation: Simple JavaScript Templating
+        // John Resig - http://ejohn.org/ - MIT Licensed
+        var processed_source = source
+            .replace(/<%([^\=](.+?))\)(\s*)%>/g,'<%$1);$3%>') //fix missing semi-colons
+            .replace(/[\r\t\n]/g, " ")
+            .replace(/'(?=[^%]*%>)/g,"\t")
+            .split("'").join("\\'")
+            .split("\t").join("'")
+            .replace(/<%=(.+?)%>/g, "',$1,'")
+            .split("<%").join("');")
+            .split("%>").join("p.push('")
+        ;
+        return new Function("data",[
+            "var p = [];",
+            "var print = function(){p.push.apply(p,arguments);};",
+            "with(this.helpers){with(data){p.push('",
+            processed_source,
+            "');}}",
+            "return p.join('');"
+        ].join(''));
+    }
+    catch(e)
+    {
+        ActiveSupport.throwError(ActiveView.Template.Errors.CompilationFailed,'input:',source,'processed:',processed_source,e);
+    }
+};
+
+ActiveView.Template.Errors = {
+    CompilationFailed: ActiveSupport.createError('The template could not be compiled:')
+};
+
+ActiveView.Template.InstanceMethods = {
+    /**
+     * Renders the template with the given scope / data, returning
+     * the processed result as a string.
+     * @alias ActiveView.Template.prototype.render
+     * @param {Object} [data]
+     * @return {String}
+     */
+    render: function render(data)
+    {
+        return ActiveSupport.bind(this.template,this)(data || {});
+    }
+};
+
+/**
+ * Contains all methods that will become available as locals to templates.
+ * @alias ActiveView.Template.Helpers
+ * @property {Object}
+ */
+ActiveView.Template.Helpers = {};
+
 })();
 
 var ActiveController = null;
 
+if(typeof exports != "undefined"){
+    exports.ActiveController = ActiveController;
+}
+
 (function(){
 
+/**
+ * @namespace {ActiveController}
+ * @example
+ * 
+ * ActiveController
+ * ================
+ * Tutorial coming soon.
+ */
 ActiveController = {};
 
 ActiveController.logging = false;
 
 ActiveController.create = function create(actions,methods)
 {
-    var klass = function klass(container,params){
-        this.container = container || ActiveController.createDefaultContainer();
-        this.renderTarget = this.container;
-        this.layoutRendered = false;
-        if(this.layout && typeof(this.layout.view) === 'function')
-        {
-            this.layout.view = ActiveSupport.bind(this.layout.view,this);
-        }
+    var klass = function klass(container,parent,params){
+        this.container = container;
+        this.setRenderTarget(this.container);
+        this.parent = parent;
+        this.children = [];
+        this.history = ActiveSupport.clone(ActiveController.History);
+        this.history.callActionAtIndex = ActiveSupport.bind(this.history.callActionAtIndex,this);
         this.params = params || {};
         this.scope = new ActiveEvent.ObservableHash({});
         this.initialize();
@@ -7008,10 +7786,10 @@ ActiveController.create = function create(actions,methods)
 ActiveController.createDefaultContainer = function createDefaultContainer()
 {
     var global_context = ActiveSupport.getGlobalContext();
-    var div = global_context.document.createElement('div');
+    var div = ActiveView.Builder.div();
     if(!global_context.document.body)
     {
-        throw Errors.BodyNotAvailable;
+        return ActiveSupport.throwError(Errors.BodyNotAvailable);
     }
     global_context.document.body.appendChild(div);
     return div;
@@ -7020,93 +7798,111 @@ ActiveController.createDefaultContainer = function createDefaultContainer()
 ActiveController.createAction = function createAction(klass,action_name,action)
 {
     klass.prototype[action_name] = function action_wrapper(){
-        this.notify('beforeCall',action_name,this.params);
-        if(this.layout && !this.layoutRendered && this.layout.view)
+        if(arguments[0] && typeof(arguments[0]) == 'object')
         {
-            this.layoutRendered = true;
-            this.layout.target = this.container;
-            var layout = this.render(this.layout);
-            if(layout && layout.renderTarget)
-            {
-                this.renderTarget = layout.renderTarget;
-            }
+            this.params = arguments[0];
         }
+        this.notify('beforeCall',action_name,this.params);
+        this.renderLayout();
         ActiveSupport.bind(action,this)();
+        this.history.history.push([action_name,this.params]);
         this.notify('afterCall',action_name,this.params);
     };
 };
 
-var InstanceMethods = {
-    initialize: function initialize()
-    {
+var InstanceMethods = (function(){
+    return {
+        initialize: function initialize()
+        {
         
-    },
-    get: function get(key)
-    {
-        return this.scope.get(key);
-    },
-    set: function set(key,value)
-    {
-        return this.scope.set(key,value);
-    },
-    render: function render(params)
-    {
-        var args = this.renderArgumentsFromRenderParams(params);
-        var response = args.stopped ? null : ActiveView.render.apply(ActiveView,args);
-        return response;
-    },
-    renderArgumentsFromRenderParams: function renderArgumentsFromRenderParams(params)
-    {
-        if(typeof(params) !== 'object')
+        },
+        get: function get(key)
         {
-            throw Errors.InvalidRenderParams;
-        }
-        var args = [null,this.renderTarget,this.scope];
-        for(var flag_name in params || {})
+            return this.scope.get(key);
+        },
+        set: function set(key,value)
         {
-            if(!RenderFlags[flag_name])
+            return this.scope.set(key,value);
+        },
+        render: function render(params)
+        {
+            if(typeof(params) !== 'object')
             {
-                if(ActiveController.logging)
-                {
-                    ActiveSupport.log('ActiveController: render() failed with params:',params);
-                }
-                throw Errors.UnknownRenderFlag + flag_name;
+                return ActiveSupport.throwError(Errors.InvalidRenderParams);
             }
-            ActiveSupport.bind(RenderFlags[flag_name],this)(params[flag_name],args);
+            for(var flag_name in params || {})
+            {
+                if(!RenderFlags[flag_name])
+                {
+                    if(ActiveController.logging)
+                    {
+                        ActiveSupport.log('ActiveController: render() failed with params:',params);
+                    }
+                    return ActiveSupport.throwError(Errors.UnknownRenderFlag,flag_name);
+                }
+                ActiveSupport.bind(RenderFlags[flag_name],this)(params[flag_name],params);
+            }
+            return params;
+        },
+        getRenderTarget: function getRenderTarget()
+        {
+            return this.renderTarget;
+        },
+        setRenderTarget: function setRenderTarget(target)
+        {
+            this.renderTarget = target;
+        },
+        renderLayout: function renderLayout()
+        {
+            if(this.layout && !this.layoutRendered && typeof(this.layout) == 'function')
+            {
+                this.layoutRendered = true;
+                ActiveView.Builder.clearElement(this.container);
+                this.container.appendChild(this.layout.bind(this)());
+            }
         }
-        return args;
-    }
-};
+    };
+})();
 ActiveController.InstanceMethods = InstanceMethods;
 
 var RenderFlags = {
-    view: function view(view_class,args)
+    view: function view(view_class,params)
     {
         if(typeof(view_class) === 'string')
         {
             var klass = ActiveSupport.getClass(view_class);
             if(!klass)
             {
-                throw Errors.ViewDoesNotExist + view_class;
+                return ActiveSupport.throwError(Errors.ViewDoesNotExist,view_class);
             }
-            args[0] = klass;
         }
         else
         {
-            args[0] = view_class;
+            klass = view_class;
+        }
+        var response = ActiveView.render(klass,params.scope || this.scope);
+        var container = params.target || this.getRenderTarget();
+        if(container)
+        {
+            ActiveView.Builder.clearElement(container);
+            container.appendChild(response);
         }
     },
-    text: function text(text,args)
+    text: function text(text,params)
     {
-        args[0] = text;
+        var container = params.target || this.getRenderTarget();
+        if(container)
+        {
+            container.innerHTML = text;
+        }
     },
-    target: function target(target,args)
+    target: function target(target,params)
     {
-        args[1] = target;
+        //target only available for text + view, needs no processing
     },
-    scope: function scope(scope,args)
+    scope: function scope(scope,params)
     {
-        args[2] = scope;
+        //scope only available for text + view, needs no processing
     }
 };
 ActiveController.RenderFlags = RenderFlags;
@@ -7120,11 +7916,63 @@ var ClassMethods = {
 ActiveController.ClassMethods = ClassMethods;
 
 var Errors = {
-    BodyNotAvailable: 'Controller could not attach to a DOM element, no container was passed and document.body is not available',
-    InvalidRenderParams: 'The parameter passed to render() was not an object.',
-    UnknownRenderFlag: 'The following render flag does not exist: ',
-    ViewDoesNotExist: 'The specified view does not exist: '
+    BodyNotAvailable: ActiveSupport.createError('Controller could not attach to a DOM element, no container was passed and document.body is not available'),
+    InvalidRenderParams: ActiveSupport.createError('The parameter passed to render() was not an object.'),
+    UnknownRenderFlag: ActiveSupport.createError('The following render flag does not exist: '),
+    ViewDoesNotExist: ActiveSupport.createError('The specified view does not exist: ')
 };
 ActiveController.Errors = Errors;
+
+ActiveController.History = {
+    index: 0,
+    history: [],
+    //"this" will be bound to the controller instance
+    callActionAtIndex: function callActionAtIndex(index)
+    {
+        this[this.history.history[index][0]].apply(this,this.history.history[index][1]);
+    },
+    goToIndex: function goToIndex(index)
+    {
+        if(!this.history[index])
+        {
+            return false;
+        }
+        this.index = index;
+        this.callActionAtIndex(this.index);
+        return true;
+    },
+    /**
+     * Calls the previously called action in the history.
+     * @alias ActiveController.prototype.history.back
+     * @return {Boolean}
+     */
+    back: function back()
+    {
+        if(this.index == 0)
+        {
+            return false;
+        }
+        --this.index;
+        this.callActionAtIndex(this.index);
+        return true;
+    },
+
+    /**
+     * Calls the next called action in the history if back() has already
+     * been called.
+     * @alias ActiveController.prototype.history.next
+     * @return {Boolean}
+     */
+    next: function next()
+    {
+        if(this.index >= this.history.length - 1)
+        {
+            return false;
+        }
+        ++this.index;
+        this.callActionAtIndex(this.index);
+        return true;
+    }
+};
 
 })();

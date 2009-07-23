@@ -46,23 +46,11 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
     {
         return ActiveSupport.JSON.stringify(this.storage);
     },
-    log: function log()
-    {
-        if(!ActiveRecord.logging)
-        {
-            return;
-        }
-        if(arguments[0])
-        {
-            arguments[0] = 'ActiveRecord: ' + arguments[0];
-        }
-        return ActiveSupport.log.apply(ActiveSupport,arguments || []);
-    },
     executeSQL: function executeSQL(sql)
     {
         ActiveRecord.connection.log('Adapters.InMemory could not execute SQL:' + sql);
     },
-    insertEntity: function insertEntity(table, data)
+    insertEntity: function insertEntity(table, primary_key_name, data)
     {
         this.setupTable(table);
         var max = 1;
@@ -79,7 +67,7 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
             data.id = max;
         }
         this.lastInsertId = data.id;
-        this.storage[table][max] = data;
+        this.storage[table][data.id] = data;
         this.notify('created',table,data.id,data);
         return true;
     },
@@ -91,18 +79,11 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
     {
         
     },
-    updateEntity: function updateEntity(table, id, data)
+    updateEntity: function updateEntity(table, primary_key_name, id, data)
     {
         this.setupTable(table);
         this.storage[table][id] = data;
         this.notify('updated',table,id,data);
-        return true;
-    },
-    updateAttribute: function updateAttribute(table, id, key, value)
-    {
-        this.setupTable(table);
-        this.storage[table][id][key] = value;
-        this.notify('updated',table,id,this.storage[table][id]);
         return true;
     },
     calculateEntities: function calculateEntities(table, params, operation)
@@ -149,7 +130,7 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
                 return operation_type === 'avg' ? sum / entities.length : sum;
         }
     },
-    deleteEntity: function deleteEntity(table, id)
+    deleteEntity: function deleteEntity(table, primary_key_name, id)
     {
         this.setupTable(table);
         if(!id || id === 'all')
@@ -169,12 +150,34 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
         }
         return false;
     },
+    findEntitiesById: function findEntitiesById(table, primary_key_name, ids)
+    {
+        var table_data = this.storage[table];
+        var response = [];
+        for(var i = 0; i < ids.length; ++i)
+        {
+            var id = ids[i];
+            if(table_data[id])
+            {
+                response.push(table_data[id]);
+            }
+        }
+        return this.iterableFromResultSet(response);
+    },
     findEntities: function findEntities(table, params)
     {
-        if (typeof(table) === 'string' && !params)
+        if (typeof(table) === 'string' && !table.match(/^\d+$/) && typeof(params) != 'object')
         {
             //find by SQL
-            var response = this.paramsFromSQLString(table);
+
+            //replace ? in SQL strings
+            var sql = table;
+            var sql_args = ActiveSupport.arrayFrom(arguments).slice(1);
+            for(var i = 0; i < sql_args.length; ++i)
+            {
+                sql = sql.replace(/\?/,ActiveRecord.escape(sql_args[i]));
+            }
+            var response = this.paramsFromSQLString(sql);
             table = response[0];
             params = response[1];
         }
@@ -187,9 +190,9 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
         var table_data = this.storage[table];
         if(params && params.where && params.where.id)
         {
-            if(table_data[parseInt(params.where.id, 10)])
+            if(table_data[params.where.id])
             {
-                entity_array.push(table_data[parseInt(params.where.id, 10)]);
+                entity_array.push(table_data[params.where.id]);
             }
         }
         else
@@ -200,6 +203,10 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
             }
         }
         var filters = [];
+        if(params && params.group)
+        {
+            filters.push(this.createGroupBy(params.group));
+        }
         if(params && params.where)
         {
             filters.push(this.createWhere(params.where));
@@ -225,25 +232,22 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
         var select_match = sql.match(select); 
         var table = select_match[1];
         sql = sql.replace(select,'');
-        var fragments = {
-            limit: 'LIMIT\s+',
-            order: 'ORDER\s+BY\s+',
-            where: ''
-        };
-        var where = sql.match(/\s+WHERE\s+(.+)(ORDER\s+BY\s+|LIMIT\s+|$)/i);
-        if(where)
+        var fragments = [
+            ['limit',/(^|\s+)LIMIT\s+(.+)$/i],
+            ['order',/(^|\s+)ORDER\s+BY\s+(.+)$/i],
+            ['group',/(^|\s+)GROUP\s+BY\s+(.+)$/i],
+            ['where',/(^|\s+)WHERE\s+(.+)$/i]
+        ];
+        for(var i = 0; i < fragments.length; ++i)
         {
-            params.where = where[1];
-        }
-        var order = sql.match(/ORDER\s+BY\s+(.+)(LIMIT\s+|$)/i);
-        if(order)
-        {
-            params.order = order[1];
-        }
-        var limit = sql.match(/LIMIT\s+(.+)$/);
-        if(limit)
-        {
-            params.limit = limit[1];
+            var param_name = fragments[i][0];
+            var matcher = fragments[i][1];
+            var match = sql.match(matcher);
+            if(match)
+            {
+                params[param_name] = match[2];
+                sql = sql.replace(matcher,'');
+            }
         }
         return [table,params];
     },
@@ -261,7 +265,7 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
         catch(e)
         {
             this.storage = backup;
-            throw e;
+            return ActiveSupport.throwError(e);
         }
     },
     /* PRVIATE */
@@ -299,8 +303,18 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
         }
     },
     createWhere: function createWhere(where)
-    {
-        if(typeof(where) === 'string'){
+    {   
+        if(ActiveSupport.isArray(where))
+        {
+            var where_fragment = where[0];
+            for(var i = 1; i < where.length; ++i)
+            {
+                where_fragment = where_fragment.replace(/\?/,ActiveRecord.escape(where[i]));
+            }
+            where = where_fragment;
+        }
+        if(typeof(where) === 'string')
+        {
             return function json_result_where_processor(result_set)
             {
                 var response = [];
@@ -315,7 +329,9 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
                 }
                 return response;
             };
-        }else{
+        }
+        else
+        {
             return function json_result_where_processor(result_set)
             {
                 var response = [];
@@ -324,7 +340,7 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
                     var included = true;
                     for(var column_name in where)
                     {
-                        if((new String(result_set[i][column_name]).toString()) != (new String(where[column_name]).toString()))
+                        if((String(result_set[i][column_name])) != (String(where[column_name])))
                         {
                             included = false;
                             break;
@@ -345,6 +361,31 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
         {
             return result_set.slice(offset || 0,limit);
         };
+    },
+    createGroupBy: function createGroupBy(group_by)
+    {
+        if(!group_by || group_by == '')
+        {
+            return function json_result_group_by_processor(result_set)
+            {
+                return result_set;
+            }
+        }
+        var group_key = group_by.replace(/(^[\s]+|[\s]+$)/g,'');
+        return function json_result_group_by_processor(result_set)
+        {
+            var response = [];
+            var indexed_by_group = {};
+            for(var i = 0; i < result_set.length; ++i)
+            {
+                indexed_by_group[result_set[i][group_key]] = result_set[i];
+            }
+            for(var group_key_value in indexed_by_group)
+            {
+                response.push(indexed_by_group[group_key_value]);
+            }
+            return response;
+        }
     },
     createOrderBy: function createOrderBy(order_by)
     {
@@ -409,6 +450,10 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
     },
     fieldIn: function fieldIn(field, value)
     {
+        if(value && value instanceof Date)
+        {
+            return ActiveSupport.dateFormat(value,'yyyy-mm-dd HH:MM:ss');
+        }
         if(Migrations.objectIsFieldDefinition(field))
         {
             field = this.getDefaultValueFromFieldDefinition(field);
@@ -420,6 +465,11 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
     {
         if(Migrations.objectIsFieldDefinition(field))
         {
+            //date handling
+            if(field.type.toLowerCase().match(/date/) && typeof(value) == 'string')
+            {
+                return ActiveSupport.dateFromDateTime(value);
+            }
             field = this.getDefaultValueFromFieldDefinition(field);
         }
         value = this.setValueFromFieldIfValueIsNull(field,value);
@@ -427,7 +477,7 @@ ActiveSupport.extend(Adapters.InMemory.prototype,{
     }
 });
 
-Adapters.InMemory.method_call_handler = function method_call_handler(name,args)
+Adapters.InMemory.method_call_handler = function method_call_handler(name,row,args)
 {
     if(!Adapters.InMemory.MethodCallbacks[name])
     {
@@ -437,11 +487,11 @@ Adapters.InMemory.method_call_handler = function method_call_handler(name,args)
     }
     if(!Adapters.InMemory.MethodCallbacks[name])
     {
-        throw Errors.MethodDoesNotExist;
+        return ActiveSupport.throwError(Errors.MethodDoesNotExist);
     }
     else
     {
-        return Adapters.InMemory.MethodCallbacks[name].apply(Adapters.InMemory.MethodCallbacks[name],args);
+        return Adapters.InMemory.MethodCallbacks[name].apply(Adapters.InMemory.MethodCallbacks[name],[row].concat(args || []));
     }
 };
 Adapters.InMemory.MethodCallbacks = (function(){
@@ -451,7 +501,7 @@ Adapters.InMemory.MethodCallbacks = (function(){
     {
         methods[math_methods[i]] = (function math_method_generator(i){
             return function generated_math_method(){
-                return Math[math_methods[i]].apply(Math.math_methods[i],arguments);
+                return Math[math_methods[i]].apply(Math.math_methods[i],ActiveSupport.arrayFrom(arguments).slice(1));
             };
         })(i);
     }

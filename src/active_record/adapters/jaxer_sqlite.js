@@ -24,28 +24,18 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  * 
  * ***** END LICENSE BLOCK ***** */
- 
+
+(function(){
+
 /**
  * Adapter for Jaxer configured with SQLite
  * @alias ActiveRecord.Adapters.JaxerSQLite
  * @property {ActiveRecord.Adapter}
  */ 
-Adapters.JaxerSQLite = function JaxerSQLite(){
-    ActiveSupport.extend(this,Adapters.InstanceMethods);
-    ActiveSupport.extend(this,Adapters.SQLite);
+ActiveRecord.Adapters.JaxerSQLite = function JaxerSQLite(){
+    ActiveSupport.extend(this,ActiveRecord.Adapters.InstanceMethods);
+    ActiveSupport.extend(this,ActiveRecord.Adapters.SQLite);
     ActiveSupport.extend(this,{
-        log: function log()
-        {
-            if (!ActiveRecord.logging)
-            {
-                return;
-            }
-            if (arguments[0])
-            {
-                arguments[0] = 'ActiveRecord: ' + arguments[0];
-            }
-            return ActiveSupport.log.apply(ActiveSupport,arguments || {});
-        },
         executeSQL: function executeSQL(sql)
         {
             ActiveRecord.connection.log("Adapters.JaxerSQLite.executeSQL: " + sql + " [" + ActiveSupport.arrayFrom(arguments).slice(1).join(',') + "]");
@@ -58,51 +48,17 @@ Adapters.JaxerSQLite = function JaxerSQLite(){
         },
         iterableFromResultSet: function iterableFromResultSet(result)
         {
-            result.iterate = function iterate(iterator)
-            {
-                if (typeof(iterator) === 'number')
-                {
-                    if (this.rows[iterator])
-                    {
-                        return ActiveSupport.clone(this.rows[iterator]);
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    for (var i = 0; i < this.rows.length; ++i)
-                    {
-                        var row = ActiveSupport.clone(this.rows[i]);
-                        delete row['$values'];
-                        iterator(row);
-                    }
-                }
-            };
+            result.iterate = ActiveRecord.Adapters.defaultResultSetIterator;
             return result;
-        },
-        transaction: function transaction(proceed)
-        {
-            try
-            {
-                ActiveRecord.connection.executeSQL('BEGIN');
-                proceed();
-                ActiveRecord.connection.executeSQL('COMMIT');
-            }
-            catch(e)
-            {
-                ActiveRecord.connection.executeSQL('ROLLBACK');
-                throw e;
-            }
         }
     });
 };
-Adapters.JaxerSQLite.connect = function connect(path)
+ActiveRecord.Adapters.JaxerSQLite.connect = function connect(path)
 {
     Jaxer.DB.connection = new Jaxer.DB.SQLite.createDB({
         PATH: Jaxer.Dir.resolve(path || 'ActiveRecord.sqlite')
     });
-    return new Adapters.JaxerSQLite();
+    return new ActiveRecord.Adapters.JaxerSQLite();
 };
+
+})();

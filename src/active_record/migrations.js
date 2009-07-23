@@ -28,11 +28,15 @@
 /**
  * @namespace {ActiveRecord.Migrations}
  * @example
+ * 
+ * Migrations
+ * ----------
+ * 
  * Migrations are a method of versioining the database schema used by your
  * application. All of your migrations must be defined in an object assigned
  * to ActiveRecord.Migrations.migrations. The keys need not be numerically
  * sequential, but must be numeric (i.e. 1,2,3 or 100,200,300).
- *
+ * 
  * Each migration object must have an up() and down() method which will
  * recieve an ActiveRecord.Migrations.Schema object. createTable() and
  * addColumn() both use the same syntax as define() to specify default
@@ -67,7 +71,6 @@
  *     ActiveRecord.Migrations.migrate(0); //migrates down below 1, effectively erasing the schema
  *     ActiveRecord.Migrations.migrate(1); //migrates to version 1
  */
-
 var Migrations = {
     fieldTypesWithDefaultValues: {
         'tinyint': 0,
@@ -75,10 +78,10 @@ var Migrations = {
         'mediumint': 0,
         'int': 0,
         'integer': 0,
-        'bitint': 0,
+        'bigint': 0,
         'float': 0,
         'double': 0,
-        'bouble precision': 0,
+        'double precision': 0,
         'real': 0,
         'decimal': 0,
         'numeric': 0,
@@ -182,22 +185,22 @@ var Migrations = {
      */
     max: function max()
     {
-        var maxVal = 0;
+        var max_val = 0;
         for(var key_name in Migrations.migrations)
         {
             key_name = parseInt(key_name, 10);
-            if(key_name > maxVal)
+            if(key_name > max_val)
             {
-                maxVal = key_name;
+                max_val = key_name;
             }
         }
-        return maxVal;
+        return max_val;
     },
     setup: function setMigrationsTable()
     {
         if(!Migrations.Meta)
         {
-            Migrations.Meta = ActiveRecord.define('schema_migrations',{
+            Migrations.Meta = ActiveRecord.create('schema_migrations',{
                 version: 0
             });
             delete ActiveRecord.Models.SchemaMigrations;
@@ -253,40 +256,6 @@ var Migrations = {
             migrations.push([keys[i],Migrations.migrations[keys[i]]]);
         }
         return migrations;
-    },
-    applyTypeConversionCallbacks: function applyTypeConversionCallbacks(model,fields)
-    {
-        model.observe('afterInitialize', function applyFieldOut(record){
-            for (var key in fields)
-            {
-                var value = ActiveRecord.connection.fieldOut(fields[key], record.get(key));
-                if(Migrations.objectIsFieldDefinition(value))
-                {
-                    value = value.value;
-                }
-                record.set(key,value);
-            }
-        });
-        model.observe('beforeSave', function applyFieldIn(record){
-            for (var key in fields)
-            {
-                record.set(key,ActiveRecord.connection.fieldIn(fields[key], record.get(key)));
-            }
-        });
-        model.observe('afterSave', function applyFieldOut(record){
-            for (var key in fields)
-            {
-                record.set(key,ActiveRecord.connection.fieldOut(fields[key], record.get(key)));
-            }
-        });
-        for (var key in fields)
-        {
-            Finders.generateFindByField(model, key);
-            Finders.generateFindAllByField(model, key);
-        }
-        Finders.generateFindByField(model, 'id');
-        //illogical, but consistent
-        Finders.generateFindAllByField(model, 'id');
     },
     objectIsFieldDefinition: function objectIsFieldDefinition(object)
     {
@@ -352,50 +321,6 @@ var Migrations = {
             return ActiveRecord.connection.removeIndex(table_name,index_name);
         }
     }
-};
-
-/**
- * If the table for your ActiveRecord does not exist, this will define the
- * ActiveRecord and automatically create the table.
- * @alias ActiveRecord.define
- * @param {String} table_name
- * @param {Object} fields
- *      Should consist of column name, default value pairs. If an empty array or empty object is set as the default, any arbitrary data can be set and will automatically be serialized when saved. To specify a specific type, set the value to an object that contains a "type" key, with optional "length" and "value" keys.
- * @param {Object} [methods]
- * @param {Function} [readyCallback]
- *      Must be specified if running in asynchronous mode.
- * @return {Object}
- * @example
- * 
- *     var User = ActiveRecord.define('users',{
- *         name: '',
- *         password: '',
- *         comment_count: 0,
- *         profile: {
- *             type: 'text',
- *             value: ''
- *         },
- *         serializable_field: {}
- *     });
- *     var u = User.create({
- *         name: 'alice',
- *         serializable_field: {a: '1', b: '2'}
- *     }); 
- */
-ActiveRecord.define = function define(table_name, fields, methods)
-{
-    //clean field definition
-    for(var field_name in fields)
-    {
-        if(typeof(fields[field_name]) === 'object' && fields[field_name].type && !('value' in fields[field_name]))
-        {
-            fields[field_name].value = null;
-        }
-    }
-    var model = ActiveRecord.create(table_name,methods);
-    Migrations.Schema.createTable(table_name,fields);
-    Migrations.applyTypeConversionCallbacks(model,fields);
-    return model;
 };
 
 ActiveRecord.Migrations = Migrations;

@@ -33,13 +33,6 @@
  */
 var ResultSet = {};
 
-ResultSet.extend = function extend(result_set,params,model){
-    for(var method_name in ResultSet.InstanceMethods)
-    {
-        result_set[method_name] = ActiveSupport.curry(ResultSet.InstanceMethods[method_name],result_set,params,model);
-    }
-};
-
 ResultSet.InstanceMethods = {
     /**
      * Re-runs the query that generated the result set. This modifies the
@@ -53,6 +46,21 @@ ResultSet.InstanceMethods = {
         {
             result_set.push(new_response[i]);
         }
+    },
+    /**
+     * Builds an array calling toObject() on each instance in the result
+     * set, thus reutrning a vanilla array of vanilla objects.
+     * @alias ActiveRecord.ResultSet.toArray
+     * @return {Array}
+     */
+    toArray: function toArray(result_set,params,model)
+    {
+        var items = [];
+        for(var i = 0; i < result_set.length; ++i)
+        {
+            items.push(result_set[i].toObject());
+        }
+        return items;
     },
     /**
      * @alias ActiveRecord.ResultSet.toJSON

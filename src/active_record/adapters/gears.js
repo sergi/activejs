@@ -24,43 +24,24 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  * 
  * ***** END LICENSE BLOCK ***** */
- 
+
+(function(){
+
 /**
  * Adapter for browsers supporting a SQL implementation (Gears, HTML5).
  * @alias ActiveRecord.Adapters.Gears
  * @property {ActiveRecord.Adapter}
  */
-Adapters.Gears = function Gears(db){
+ActiveRecord.Adapters.Gears = function Gears(db){
     this.db = db;
-    ActiveSupport.extend(this,Adapters.InstanceMethods);
-    ActiveSupport.extend(this,Adapters.SQLite);
+    ActiveSupport.extend(this,ActiveRecord.Adapters.InstanceMethods);
+    ActiveSupport.extend(this,ActiveRecord.Adapters.SQLite);
     ActiveSupport.extend(this,{
-        log: function log()
-        {
-            if(!ActiveRecord.logging)
-            {
-                return;
-            }
-            if(arguments[0])
-            {
-                arguments[0] = 'ActiveRecord: ' + arguments[0];
-            }
-            return ActiveSupport.log.apply(ActiveSupport,arguments || []);
-        },
         executeSQL: function executeSQL(sql)
         {
             var args = ActiveSupport.arrayFrom(arguments);
-            var proceed = null;
-            if(typeof(args[args.length - 1]) === 'function')
-            {
-                proceed = args.pop();
-            }
             ActiveRecord.connection.log("Adapters.Gears.executeSQL: " + sql + " [" + args.slice(1).join(',') + "]");
             var response = ActiveRecord.connection.db.execute(sql,args.slice(1));
-            if(proceed)
-            {
-                proceed(response);
-            }
             return response;
         },
         getLastInsertedRowId: function getLastInsertedRowId()
@@ -73,39 +54,23 @@ Adapters.Gears = function Gears(db){
                 rows: []
             };
             var count = result.fieldCount();
+            var fieldNames = [];
+            for(var i = 0; i < count; ++i)
+            {
+                fieldNames[i] = result.fieldName(i);
+            }
             while(result.isValidRow())
             {
                 var row = {};
                 for(var i = 0; i < count; ++i)
                 {
-                    row[result.fieldName(i)] = result.field(i);
+                    row[fieldNames[i]] = result.field(i);
                 }
                 response.rows.push(row);
                 result.next();
             }
             result.close();
-            response.iterate = function(iterator)
-            {
-                if(typeof(iterator) === 'number')
-                {
-                    if (this.rows[iterator])
-                    {
-                        return ActiveSupport.clone(this.rows[iterator]);
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    for(var i = 0; i < this.rows.length; ++i)
-                    {
-                        var row = ActiveSupport.clone(this.rows[i]);
-                        iterator(row);
-                    }
-                }
-            };
+            response.iterate = ActiveRecord.Adapters.defaultResultSetIterator;
             return response;
         },
         fieldListFromTable: function(table_name)
@@ -120,25 +85,11 @@ Adapters.Gears = function Gears(db){
                 response[parts[i].replace(/(^\s+|\s+$)/g,'')] = parts[i].replace(/^\w+\s?/,'');
             }
             return response;
-        },
-        transaction: function transaction(proceed)
-        {
-            try
-            {
-                ActiveRecord.connection.executeSQL('BEGIN');
-                proceed();
-                ActiveRecord.connection.executeSQL('COMMIT');
-            }
-            catch(e)
-            {
-                ActiveRecord.connection.executeSQL('ROLLBACK');
-                throw e;
-            }
         }
     });
 };
-Adapters.Gears.DatabaseUnavailableError = 'ActiveRecord.Adapters.Gears could not find a Google Gears database to connect to.';
-Adapters.Gears.connect = function connect(name, version, display_name, size)
+ActiveRecord.Adapters.Gears.DatabaseUnavailableError = 'ActiveRecord.Adapters.Gears could not find a Google Gears database to connect to.';
+ActiveRecord.Adapters.Gears.connect = function connect(name, version, display_name, size)
 {
     var global_context = ActiveSupport.getGlobalContext();
     var db = null;
@@ -148,7 +99,7 @@ Adapters.Gears.connect = function connect(name, version, display_name, size)
         var gears_factory = null;
         if('GearsFactory' in global_context)
         {
-          gears_factory = new GearsFactory();
+            gears_factory = new GearsFactory();
         }
         else if('ActiveXObject' in global_context)
         {
@@ -162,7 +113,7 @@ Adapters.Gears.connect = function connect(name, version, display_name, size)
             }
             catch(e)
             {
-                throw Adapters.Gears.DatabaseUnavailableError;
+                return ActiveSupport.throwError(ActiveRecord.Adapters.Gears.DatabaseUnavailableError);
             }
         }
         else if(('mimeTypes' in navigator) && ('application/x-googlegears' in navigator.mimeTypes))
@@ -177,14 +128,14 @@ Adapters.Gears.connect = function connect(name, version, display_name, size)
         
         if(!gears_factory)
         {
-          throw Adapters.Gears.DatabaseUnavailableError;
+            return ActiveSupport.throwError(ActiveRecord.Adapters.Gears.DatabaseUnavailableError);
         }
-    
+        
         if(!('google' in global_context))
         {
-          google = {};
+            google = {};
         }
-
+        
         if(!('gears' in google))
         {
             google.gears = {
@@ -194,7 +145,9 @@ Adapters.Gears.connect = function connect(name, version, display_name, size)
     }
 
     db = google.gears.factory.create('beta.database');
-    db.open(name || 'ActiveRecord');
+    db.open(typeof name == 'undefined' ? 'ActiveRecord' : name);
         
-    return new Adapters.Gears(db);
+    return new ActiveRecord.Adapters.Gears(db);
 };
+
+})();

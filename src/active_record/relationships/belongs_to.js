@@ -61,7 +61,7 @@ ActiveRecord.ClassMethods.belongsTo = function belongsTo(related_model_name, opt
         var id = this.get(foreign_key);
         if (id)
         {
-            return ActiveRecord.Models[related_model_name].find(id);
+            return ActiveRecord.Models[related_model_name].get(id);
         }
         else
         {
@@ -78,9 +78,9 @@ ActiveRecord.ClassMethods.belongsTo = function belongsTo(related_model_name, opt
     }, related_model_name, foreign_key);
     instance_methods['create' + relationship_name] = ActiveSupport.curry(function createRelated(related_model_name, foreign_key, params){
         var record = this['build' + related_model_name](params);
-        if(record.save() && this.get('id'))
+        if(record.save() && this.get(this.constructor.primaryKeyName))
         {
-            this.updateAttribute(foreign_key, record.get('id'));
+            this.updateAttribute(foreign_key, record.get(record.constructor.primaryKeyName));
         }
         return record;
     }, related_model_name, foreign_key);
@@ -102,7 +102,7 @@ ActiveRecord.ClassMethods.belongsTo = function belongsTo(related_model_name, opt
                 child.updateAttribute(options.counter, Math.max(0, parseInt(current_value, 10) - 1));
             }
         });
-        this.observe('afterCreate', function incrimentBelongsToCounter(record){
+        this.observe('afterCreate', function incrementBelongsToCounter(record){
             var child = record['get' + relationship_name]();
             if(child)
             {

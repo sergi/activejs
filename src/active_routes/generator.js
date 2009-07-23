@@ -36,7 +36,7 @@ ActiveRoutes.prototype.cleanPath = function cleanPath(path,params,only_path)
         path = path.replace(/\/?\:method/,'');
     }
     path = path.replace(/\/?index$/,'');
-    if(path[0] != '/')
+    if(path.charAt(0) != '/')
     {
         path = '/' + path;
     }
@@ -51,11 +51,11 @@ ActiveRoutes.performParamSubstitution = function performParamSubstitution(path,r
         if(path.match(':' + p) && params[p])
         {
             if(route.params.requirements && route.params.requirements[p]){
-                if(typeof(route.params.requirements[p]) == 'function' && !route.params.requirements[p]((new String(params[p]).toString())))
+                if(typeof(route.params.requirements[p]) == 'function' && !route.params.requirements[p](String(params[p])))
                 {
                     continue;
                 }
-                else if(!route.params.requirements[p]((new String(params[p]).toString())))
+                else if(!route.params.requirements[p].exec(String(params[p])))
                 {
                     continue;
                 }
@@ -97,7 +97,7 @@ ActiveRoutes.prototype.urlFor = function urlFor(params)
         }
         if(found === false)
         {
-            throw Errors.NamedRouteDoesNotExistError + params;
+            return ActiveSupport.throwError(Errors.NamedRouteDoesNotExistError,params);
         }
         else
         {

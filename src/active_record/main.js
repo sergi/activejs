@@ -29,6 +29,9 @@
  * @namespace {ActiveRecord}
  * @example
  * 
+ * ActiveRecord
+ * ============
+ * 
  * ActiveRecord.js is a cross browser, cross platform, stand-alone object
  * relational mapper. It shares a very similar vocabulary to the Ruby
  * ActiveRecord implementation, but uses JavaScript idioms and best
@@ -70,7 +73,7 @@
  * If you are using a browser or platform that does not have access to a SQL
  * database, you can use the InMemory adapter which will store your objects
  * in memory. All features (including find by SQL) will still work, but you
- * will not be able to use the Migration features, since there are no table
+ * will not be able to use the Migration features, since there is no table
  * schema. Since your objects will not persist, the second parameter to
  * establish a connection is a hash with the data you would like to use
  * in this format: {table_name: {id: row}}. The InMemory adapter will also
@@ -94,24 +97,13 @@
  *     
  * Defining Your Model
  * -------------------
- * The only rule for all ActiveRecord classes is that the related table in the
- * database must have an auto incrementing 'id' property. If you are working
- * with a database table that already exists, you can create a model psuedo-class
- * using the create() method, passing the table name as the first parameter, and
- * any methods you want to define on that class as the second paramter:
- * 
- *     var Post = ActiveRecord.create('posts',{
- *         getWordCount: function(){
- *             return this.get('text').split(/\s+/).length;
- *         }
- *     });
- * 
- * This both returns the class and stores it inside ActiveRecord.Models.Post. If
- * the table for your model does not yet exist you can use the define() method
- * which takes the desired table as the first argument, the fields as the second
- * and the methods as the third:
- * 
- *     var User = ActiveRecord.define('users',{
+ * ActiveRecord classes are created using the ActiveRecord.create method which
+ * takes three arguments: the name of the table that the class will reference,
+ * a field definition hash, and optionally a hash of instance methods that
+ * will be added to the class. If the table does not exist it will be
+ * automically created.
+ *
+ *     var User = ActiveRecord.create('users',{
  *         username: '',
  *         password: '',
  *         post_count: 0,
@@ -120,8 +112,8 @@
  *             value: ''
  *         }
  *     },{
- *         getFormattedProfile: function(){
- *             return Markdown.format(this.get('profile'));
+ *         getProfileWordCount: function(){
+ *             return this.get('profile').split(/\s+/).length;
  *         }
  *     });
  * 
@@ -236,10 +228,10 @@
  *             current_count = updated_count;
  *         }
  *     });
- *     var new_user = User.create({...}); //current_count incremented
+ *     var new_user = User.create({params}); //current_count incremented
  *     new_user.destroy();  //current_count decremented
  *     stop();
- *     User.create({...}); //current_count unchanged
+ *     User.create({params}); //current_count unchanged
  *
  * Lifecycle
  * ---------
@@ -299,7 +291,7 @@
  *     
  * To observe a given event on all models, you can do the following: 
  * 
- *     ActiveRecord.observe('created',function(model_class,model_instance){});
+ *     ActiveRecord.observe('afterCreate',function(model_class,model_instance){});
  *     
  * afterFind works differently than all of the other events. It is only available
  * to the model class, not the instances, and is called only when a result set is
@@ -373,7 +365,7 @@
  *     var u = User.find(5);
  *     u.getCommentList().length;
  *     u.createComment({title: 'comment title'});
- *
+ * 
  * You can name the relationship (and thus the generate methods) by passing
  * a name parameter:
  * 
@@ -391,7 +383,8 @@
  * - ActsAsList
  * - ActsAsTree
  * - hasMany :through (which will likely be the only supported many to many relationship)
-*/
+ * 
+ */
 ActiveRecord = {
     /**
      * Defaults to false.
@@ -399,6 +392,12 @@ ActiveRecord = {
      * @property {Boolean}
      */
     logging: false,
+    /**
+     * Will automatically create a table when create() is called. Defaults to true.
+     * @alias ActiveRecord.autoMigrate
+     * @property {Boolean}
+     */
+    autoMigrate: true,
     /**
      * Tracks the number of records created.
      * @alias ActiveRecord.internalCounter
@@ -434,64 +433,98 @@ ActiveRecord = {
      */
     InstanceMethods: {},
     /**
-     * Creates an ActiveRecord class, returning the class and storing it inside ActiveRecord.Models[model_name]. model_name is a singularized, capitalized form of table name.
+     * Creates an ActiveRecord class, returning the class and storing it inside
+     * ActiveRecord.Models[model_name]. model_name is a singularized,
+     * capitalized form of table name.
      * @example
      *     var User = ActiveRecord.create('users');
      *     var u = User.find(5);
      * @alias ActiveRecord.create
      * @param {String} table_name
-     * @param {Array} [methods]
-     * @param {Function} [readyCallback]
-     *      Must be specified if running in asynchronous mode.
+     * @param {Object} fields
+     *      Should consist of column name, default value pairs. If an empty
+     *      array or empty object is set as the default, any arbitrary data
+     *      can be set and will automatically be serialized when saved. To
+     *      specify a specific type, set the value to an object that contains
+     *      a "type" key, with optional "length" and "value" keys.
+     * @param {Object} [methods]
      * @return {Object}
      */
-    create: function create(table_name, methods)
+    create: function create(options, fields, methods)
     {
         if (!ActiveRecord.connection)
         {
-            throw ActiveRecord.Errors.ConnectionNotEstablished;
+            return ActiveSupport.throwError(ActiveRecord.Errors.ConnectionNotEstablished);
+        }
+        
+        if(typeof(options) === 'string')
+        {
+            options = {
+                tableName: options
+            };
         }
 
         //determine proper model name
         var model = null;
-        var model_name = ActiveSupport.camelize(ActiveSupport.Inflector.singularize(table_name));
-        model_name = model_name.charAt(0).toUpperCase() + model_name.substring(1);
+        if(!options.modelName)
+        {
+            var model_name = ActiveSupport.camelize(ActiveSupport.Inflector.singularize(options.tableName) || options.tableName);
+            options.modelName = model_name.charAt(0).toUpperCase() + model_name.substring(1);
+        }
 
         //constructor
-        model = ActiveRecord.Models[model_name] = function initialize(data)
+        model = ActiveRecord.Models[options.modelName] = function initialize(data)
         {
-            this.modelName = this.constructor.modelName;
-            this.tableName = this.constructor.tableName;
             this._object = {};
-            for (var key in data)
+            for(var key in data)
             {
-                this.set(key, data[key]);
+                //third param is to suppress notifications on set
+                this.set(key,data[key],true);
             }
             this._errors = [];
+            var fields = this.constructor.fields;
+            for(var key in fields)
+            {
+                var field = fields[key];
+                if(!field.primaryKey)
+                {
+                    var value = ActiveRecord.connection.fieldOut(field,this.get(key));
+                    if(Migrations.objectIsFieldDefinition(value))
+                    {
+                        value = value.value;
+                    }
+                    //don't supress notifications on set since these are the processed values
+                    this.set(key,value);
+                }
+            }
+            this._id = this.get(this.constructor.primaryKeyName);
+            //performance optimization if no observers
             this.notify('afterInitialize', data);
-            if('created' in this._object)
-            {
-                this.observe('beforeCreate',ActiveSupport.bind(function set_created_date(){
-                    this.set('created',ActiveSupport.dateFormat('yyyy-mm-dd HH:MM:ss'));
-                },this));
-            }
-            if('updated' in this._object)
-            {
-                this.observe('beforeSave',ActiveSupport.bind(function set_updated_date(){
-                    this.set('updated',ActiveSupport.dateFormat('yyyy-mm-dd HH:MM:ss'));
-                },this));
-            }
         };
-        model.modelName = model_name;
-        model.tableName = table_name;
-
+        model.modelName = options.modelName;
+        model.tableName = options.tableName;
+        model.primaryKeyName = 'id';
+        
         //mixin instance methods
         ActiveSupport.extend(model.prototype, ActiveRecord.InstanceMethods);
 
-        //user defined take precedence
+        //user defined methods take precedence
+        if(typeof(methods) == 'undefined')
+        {
+            //detect if the fields object is actually a methods object
+            for(var method_name in fields)
+            {
+                if(typeof(fields[method_name]) == 'function')
+                {
+                    methods = fields;
+                    fields = null; 
+                }
+                break;
+            }
+        }
         if(methods && typeof(methods) !== 'function')
         {
-            ActiveSupport.extend(model.prototype, methods || {});
+            ActiveSupport.extend(model.prototype, methods);
         }
 
         //mixin class methods
@@ -499,7 +532,87 @@ ActiveRecord = {
 
         //add lifecycle abilities
         ActiveEvent.extend(model);
+        
+        //clean and set field definition
+        if(!fields)
+        {
+            fields = {};
+        }
+        var custom_primary_key = false;
+        for(var field_name in fields)
+        {
+            if(typeof(fields[field_name]) === 'object' && fields[field_name].type && !('value' in fields[field_name]))
+            {
+                fields[field_name].value = null;
+            }
+            if(typeof(fields[field_name]) === 'object' && fields[field_name].primaryKey)
+            {
+                custom_primary_key = field_name;
+            }
+        }
+        if(!custom_primary_key)
+        {
+            fields['id'] = {
+                primaryKey: true
+            };
+        }
+        model.fields = fields;
+        if(custom_primary_key)
+        {
+            model.primaryKeyName = custom_primary_key;
+        }
 
+        ActiveSupport.extend(model.prototype, {
+          modelName: model.modelName,
+          tableName: model.tableName,
+          primaryKeyName: model.primaryKeyName
+        });
+        
+        //generate finders
+        for(var key in model.fields)
+        {
+            Finders.generateFindByField(model,key);
+            Finders.generateFindAllByField(model,key);
+        }
+        //get is a synonym for findBy<PrimaryKey>
+        model.get = model['findBy' + ActiveSupport.camelize(model.primaryKeyName, true)];
+        
+        //create table for model if autoMigrate enabled
+        if(ActiveRecord.autoMigrate)
+        {
+            Migrations.Schema.createTable(options.tableName,ActiveSupport.clone(model.fields));
+        }
+        
         return model;
     }
 };
+ActiveRecord.define = ActiveRecord.create;
+
+/**
+ * If the table for your ActiveRecord does not exist, this will define the
+ * ActiveRecord and automatically create the table.
+ * @alias ActiveRecord.define
+ * @param {String} table_name
+ * @param {Object} fields
+ *      Should consist of column name, default value pairs. If an empty array or empty object is set as the default, any arbitrary data can be set and will automatically be serialized when saved. To specify a specific type, set the value to an object that contains a "type" key, with optional "length" and "value" keys.
+ * @param {Object} [methods]
+ * @param {Function} [readyCallback]
+ *      Must be specified if running in asynchronous mode.
+ * @return {Object}
+ * @example
+ * 
+ *     var User = ActiveRecord.define('users',{
+ *         name: '',
+ *         password: '',
+ *         comment_count: 0,
+ *         profile: {
+ *             type: 'text',
+ *             value: ''
+ *         },
+ *         serializable_field: {}
+ *     });
+ *     var u = User.create({
+ *         name: 'alice',
+ *         serializable_field: {a: '1', b: '2'}
+ *     }); 
+ */

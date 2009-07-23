@@ -32,7 +32,12 @@ ActiveView.generateBinding = function generateBinding(instance)
     {
         if(!element || !element.nodeType === 1)
         {
-            throw Errors.MismatchedArguments + 'expected Element, recieved ' + typeof(element);
+            return ActiveSupport.throwError(Errors.MismatchedArguments,'expected Element, recieved ',typeof(element),element);
+        }
+        var attribute = false;
+        if(arguments[1] && typeof(arguments[1]) == 'string')
+        {
+            attribute = arguments[1];
         }
         return {
             from: function from(observe_key)
@@ -53,7 +58,7 @@ ActiveView.generateBinding = function generateBinding(instance)
                 {
                     if(!callback || typeof(callback) !== 'function')
                     {
-                        throw Errors.MismatchedArguments + 'expected Function, recieved ' + typeof(callback);
+                        return ActiveSupport.throwError(Errors.MismatchedArguments,'expected Function, recieved ',typeof(callback),callback);
                     }
                     transformation = callback;
                     return {
@@ -65,7 +70,7 @@ ActiveView.generateBinding = function generateBinding(instance)
                 {
                     if(!callback || typeof(callback) !== 'function')
                     {
-                        throw Errors.MismatchedArguments + 'expected Function, recieved ' + typeof(callback);
+                        return ActiveSupport.throwError(Errors.MismatchedArguments,'expected Function, recieved ',typeof(callback),callback);
                     }
                     condition = callback;
                     return {
@@ -78,7 +83,27 @@ ActiveView.generateBinding = function generateBinding(instance)
                     {
                         if(condition())
                         {
-                            element.innerHTML = transformation ? transformation(value) : value;
+                            var formatted_value = transformation ? transformation(value) : value;
+                            if(attribute)
+                            {
+                                ActiveView.Builder.writeAttribute(element,attribute,formatted_value);
+                            }
+                            else
+                            {
+                                ActiveView.Builder.clearElement(element);
+                                if(formatted_value && formatted_value.nodeType === 1)
+                                {
+                                    element.appendChild(formatted_value);
+                                }
+                                else if(typeof(formatted_value) == 'string' || typeof(formatted_value) == 'number' || typeof(formatted_value) == 'boolean')
+                                {
+                                    element.appendChild(ActiveSupport.getGlobalContext().document.createTextNode(String(formatted_value)));
+                                }
+                                else
+                                {
+                                    return ActiveSupport.throwError(Errors.MismatchedArguments,'expected Element or string in update binding observer, recieved ',typeof(element),element);
+                                }
+                            }
                         }
                     }
                 });
@@ -95,21 +120,21 @@ ActiveView.generateBinding = function generateBinding(instance)
     {
         if(!view)
         {
-            throw Errors.MismatchedArguments + 'expected string, ActiveView class or function, recieved ' + typeof(view);
+            return ActiveSupport.throwError(Errors.MismatchedArguments,'expected string, ActiveView class or function, recieved ',typeof(view),view);
         }
         return {
             from: function from(collection)
             {
                 if(!collection || (typeof(collection) !== 'object' && typeof(collection) !== 'string'))
                 {
-                    throw Errors.MismatchedArguments + 'expected array, recieved ' + typeof(collection);
+                    return ActiveSupport.throwError(Errors.MismatchedArguments,'expected array, recieved ',typeof(collection),collection);
                 }
                 return {
                     into: function into(element)
                     {
                         if(!element || !element.nodeType === 1)
                         {
-                            throw Errors.MismatchedArguments + 'expected Element, recieved ' + typeof(element);
+                            return ActiveSupport.throwError(Errors.MismatchedArguments,'expected Element, recieved ',typeof(element),element);
                         }
                         //if a string is passed make sure that the view is re-built when the key is set
                         if(typeof(collection) === 'string')
@@ -118,7 +143,7 @@ ActiveView.generateBinding = function generateBinding(instance)
                             instance.scope.observe('set',function collection_key_change_observer(key,value){
                                 if(key == collection_name)
                                 {
-                                    element.innerHTML = '';
+                                    ActiveView.Builder.clearElement(element);
                                     instance.binding.collect(view).from(value).into(element);
                                 }
                             });
@@ -129,7 +154,8 @@ ActiveView.generateBinding = function generateBinding(instance)
                             var collected_elements = [];
                             for(var i = 0; i < collection.length; ++i)
                             {
-                                ActiveView.render(view,element,collection[i],false);
+                                var generated_element = ActiveView.render(view,collection[i]);
+                                element.appendChild(generated_element);
                                 collected_elements.push(element.childNodes[element.childNodes.length - 1]);
                             }
                             //these handlers will add or remove elements from the view as the collection changes
@@ -140,13 +166,13 @@ ActiveView.generateBinding = function generateBinding(instance)
                                     collected_elements.pop();
                                 });
                                 collection.observe('push',function push_observer(item){
-                                    ActiveView.render(view,element,item,false);
+                                    var generated_element = ActiveView.render(view,item);
+                                    element.appendChild(generated_element);
                                     collected_elements.push(element.childNodes[element.childNodes.length - 1]);
                                 });
                                 collection.observe('unshift',function unshift_observer(item){
-                                    ActiveView.render(view,element,item,false,function unshift_observer_render_executor(element,content){
-                                        element.insertBefore(content,element.firstChild);
-                                    });
+                                    var generated_element = ActiveView.render(view,item);
+                                    element.insertBefore(generated_element,element.firstChild);
                                     collected_elements.unshift(element.firstChild);
                                 });
                                 collection.observe('shift',function shift_observer(){
@@ -154,6 +180,7 @@ ActiveView.generateBinding = function generateBinding(instance)
                                     collected_elements.shift(element.firstChild);
                                 });
                                 collection.observe('splice',function splice_observer(index,to_remove){
+                                    var global_context = ActiveSupport.getGlobalContext();
                                     var children = [];
                                     var i;
                                     for(i = 2; i < arguments.length; ++i)
@@ -169,10 +196,12 @@ ActiveView.generateBinding = function generateBinding(instance)
                                     }
                                     for(i = 0; i < children.length; ++i)
                                     {
-                                        ActiveView.render(view,element,children[i],false,function splice_observer_render_executor(element,content){
-                                            element.insertBefore(typeof(content) === 'string' ? document.createTextNode(content) : content,element.childNodes[index + i]);
-                                            children[i] = element.childNodes[index + i];
-                                        });
+                                        var generated_element = ActiveView.render(view,children[i]);
+                                        element.insertBefore((typeof(generated_element) === 'string'
+                                            ? global_context.document.createTextNode(generated_element)
+                                            : generated_element
+                                        ),element.childNodes[index + i]);
+                                        children[i] = element.childNodes[index + i];
                                     }
                                     collected_elements.splice.apply(collected_elements,[index,to_remove].concat(children));
                                 });
@@ -186,17 +215,33 @@ ActiveView.generateBinding = function generateBinding(instance)
 
     instance.binding.when = function when(outer_key)
     {
+        var outer_keys;
+        if(arguments.length > 1)
+        {
+            outer_keys = ActiveSupport.arrayFrom(arguments);
+        }
+        else if(ActiveSupport.isArray(outer_key))
+        {
+            outer_keys = outer_key;
+        }
+        else
+        {
+            outer_keys = [outer_key];
+        }
         return {
             changes: function changes(callback)
             {
                 if(!callback || typeof(callback) !== 'function')
                 {
-                    throw Errors.MismatchedArguments + 'expected Function, recieved ' + typeof(callback);
+                    return ActiveSupport.throwError(Errors.MismatchedArguments,'expected Function, recieved ',typeof(callback),callback);
                 }
                 instance.scope.observe('set',function changes_observer(inner_key,value){
-                    if(outer_key == inner_key)
+                    for(var i = 0; i < outer_keys.length; ++i)
                     {
-                        callback(value);
+                        if(outer_keys[i] == inner_key)
+                        {
+                            callback(value);
+                        }
                     }
                 });
             }

@@ -32,7 +32,12 @@
  */
 var ActiveSupport = null;
 
+if(typeof exports != "undefined"){
+    exports.ActiveSupport = ActiveSupport;
+}
+
 (function(global_context){
+
 ActiveSupport = {
     /**
      * Returns the global context object (window in most implementations).
@@ -48,6 +53,7 @@ ActiveSupport = {
      * context) does not contain the class, but does have a __noSuchMethod__
      * property, it will attempt to call context[class_name]() to trigger
      * the __noSuchMethod__ handler.
+     * @alias ActiveSupport.getClass
      * @param {String} class_name
      * @param {Object} context
      * @return {Mixed}
@@ -83,15 +89,62 @@ ActiveSupport = {
     {
         if(typeof(Jaxer) !== 'undefined')
         {
+            if (typeof Jaxer.console !== 'undefined') {
+                console.log.apply(console, arguments || []);
+            }
             Jaxer.Log.info.apply(Jaxer.Log,arguments || []);
         }
-        else if(typeof(air) !== 'undefined')
+        if(typeof(air) !== 'undefined')
         {
             air.Introspector.Console.log.apply(air.Introspector.Console,arguments || []);
         }
-        else if(typeof(console) !== 'undefined')
+        if(typeof(console) !== 'undefined')
         {
             console.log.apply(console,arguments || []);
+        }
+    },
+    /**
+     * Creates an Error object (but does not throw it).
+     * @alias ActiveSupport.createError
+     * @param {String} message
+     * @return {null}
+     */
+    createError: function createError(message)
+    {
+        return new Error(message);
+    },
+    /**
+     * @alias ActiveSupport.logErrors
+     * @property {Boolean}
+     */
+    logErrors: true,
+    /**
+     * @alias ActiveSupport.throwErrors
+     * @property {Boolean}
+     */
+    throwErrors: true,
+    /**
+     * Accepts a variable number of arguments, that may be logged and thrown in
+     * @alias ActiveSupport.throwError
+     * @param {Error} error
+     * @return {null}
+     */
+    throwError: function throwError(error)
+    {
+        if(typeof(error) == 'string')
+        {
+            error = new Error(error);
+        }
+        var error_arguments = ActiveSupport.arrayFrom(arguments).slice(1);
+        if(ActiveSupport.logErrors)
+        {
+            ActiveSupport.log.apply(ActiveSupport,['Throwing error:',error].concat(error_arguments));
+        }
+        if(ActiveSupport.throwErrors)
+        {
+            var e = ActiveSupport.clone(error);
+            e.message = e.message + error_arguments.join(',');
+            throw e;
         }
     },
     /**
@@ -114,6 +167,15 @@ ActiveSupport = {
             results[length] = object[length];
         }
         return results;
+    },
+    /**
+     * @alias ActiveSupport.isArray
+     * @param {mixed} object
+     * @return {Boolean}
+     */
+    isArray: function isArray(object)
+    {
+        return object && typeof(object) == 'object' && 'length' in object && 'splice' in object && 'join' in object;
     },
     /**
      * Emulates Array.indexOf for implementations that do not support it.
@@ -146,7 +208,8 @@ ActiveSupport = {
      * @param {mixed} item to remove
      * @return {Array}
      */
-    without: function without(arr){
+    without: function without(arr)
+    {
         var values = ActiveSupport.arrayFrom(arguments).slice(1);
         var response = [];
         for(var i = 0 ; i < arr.length; i++)
@@ -159,30 +222,25 @@ ActiveSupport = {
         return response;
     },
     /**
-     * Emulates Prototype's Function.prototype.bind
+     * Emulates Prototype's Function.prototype.bind. Unlike Prototype's
+     * version you must explicitly use curry() to pass extra arguments
+     * to the bound function.
      * @alias ActiveSupport.bind
      * @param {Function} func
      * @param {Object} object
      *      object will be in scope as "this" when func is called.
      * @return {Function}
      */
-    bind: function bind(func, object)
+    bind: function bind(func,object)
     {
-        func.bind = function bind()
+        if(typeof(object) == 'undefined')
         {
-            if (arguments.length < 2 && typeof(arguments[0]) === "undefined")
-            {
-                return this;
-            }
-            var __method = this;
-            var args = ActiveSupport.arrayFrom(arguments);
-            var object = args.shift();
-            return function bound()
-            {
-                return __method.apply(object, args.concat(ActiveSupport.arrayFrom(arguments)));
-            };
+            return func;
+        }
+        return function bound()
+        {
+            return func.apply(object,arguments);
         };
-        return func.bind(object);
     },
     /**
      * Emulates Prototype's Function.prototype.curry.
@@ -192,20 +250,15 @@ ActiveSupport = {
      */
     curry: function curry(func)
     {
-        func.curry = function curry()
+        if(arguments.length == 1)
         {
-            if (!arguments.length)
-            {
-                return this;
-            }
-            var __method = this;
-            var args = ActiveSupport.arrayFrom(arguments);
-            return function curried()
-            {
-                return __method.apply(this, args.concat(ActiveSupport.arrayFrom(arguments)));
-            };
+            return func;
+        }
+        var args = ActiveSupport.arrayFrom(arguments).slice(1);
+        return function curried()
+        {
+            return func.apply(this,args.concat(ActiveSupport.arrayFrom(arguments)));
         };
-        return func.curry.apply(func, ActiveSupport.arrayFrom(arguments).slice(1));
     },
     /**
      * Returns a function wrapped around the original function.
@@ -228,13 +281,10 @@ ActiveSupport = {
      */
     wrap: function wrap(func,wrapper)
     {
-        func.wrap = function wrap(wrapper){
-            var __method = this;
-            return function wrapped(){
-                return wrapper.apply(this,[ActiveSupport.bind(__method,this)].concat(ActiveSupport.arrayFrom(arguments)));
-            };
+        return function wrapped()
+        {
+            wrapper.apply(this,[ActiveSupport.bind(func,this)].concat(ActiveSupport.arrayFrom(arguments)));
         };
-        return func.wrap(wrapper);
     },
     /**
      * Returns an array of keys from an object.
@@ -244,12 +294,12 @@ ActiveSupport = {
      */
     keys: function keys(object)
     {
-        var keysArray = [];
-        for (var property in object)
+        var keys_array = [];
+        for (var property_name in object)
         {
-            keysArray.push(property);
+            keys_array.push(property_name);
         }
-        return keysArray;
+        return keys_array;
     },
     /**
      * Emulates Prototype's String.prototype.underscore
@@ -260,8 +310,10 @@ ActiveSupport = {
     underscore: function underscore(str)
     {
         return str.replace(/::/g, '/').replace(/([A-Z]+)([A-Z][a-z])/g, function(match){
+            match = match.split("");
             return match[0] + '_' + match[1];
         }).replace(/([a-z\d])([A-Z])/g, function(match){
+            match = match.split("");
             return match[0] + '_' + match[1];
         }).replace(/-/g, '_').toLowerCase();
     },
@@ -272,7 +324,8 @@ ActiveSupport = {
      * @param {Boolean} [capitalize]
      * @return {String}
      */
-    camelize: function camelize(str, capitalize){
+    camelize: function camelize(str, capitalize)
+    {
         var camelized,
             parts = str.replace(/\_/g,'-').split('-'), len = parts.length;
         if (len === 1)
@@ -307,6 +360,17 @@ ActiveSupport = {
             return camelized;
         }
     },
+    /**
+     * Trim leading and trailing whitespace.
+     * @alias ActiveSupport.trim
+     * @param {String} str
+     * @return {String}
+     */
+    trim: function(str)
+    {
+        return (str || "").replace(/^\s+|\s+$/g,"");
+    },
+
     /**
      * Emulates Prototype's Object.extend
      * @alias ActiveSupport.extend
@@ -356,33 +420,6 @@ ActiveSupport = {
     {
         return typeof(value) === 'function' ? value() : value;
     },
-    
-    /**
-     * If it is the last argument of current function is a function, it will be
-     * returned. You can optionally specify the number of calls in the stack to
-     * look up.
-     * @alias ActiveSupport.block
-     * @param {Number} [levels]
-     * @return {mixed}
-     */
-    block: function block(args)
-    {
-        if(typeof(args) === 'number' || !args)
-        {
-            var up = arguments.callee;
-            for(var i = 0; i <= (args || 0); ++i)
-            {
-                up = up.caller;
-                if(!up)
-                {
-                    return false;
-                }
-            }
-            args = up.arguments;
-        }
-        return (args.length === 0 || typeof(args[args.length - 1]) !== 'function') ? false : args[args.length - 1];
-    },
-    
     /**
      * @alias ActiveSupport.synchronize
      */
@@ -496,11 +533,12 @@ ActiveSupport = {
                 "money",
                 "rice",
                 "information",
+				"info",
                 "equipment"
             ]
         },
         /**
-         * Generates an orginalized version of a number as a string (9th, 2nd, etc)
+         * Generates an ordinalized version of a number as a string (9th, 2nd, etc)
          * @alias ActiveSupport.Inflector.ordinalize
          * @param {Number} number
          * @return {String}
@@ -530,11 +568,11 @@ ActiveSupport = {
          */
         pluralize: function pluralize(word)
         {
-            var i;
+            var i, lc = word.toLowerCase();
             for (i = 0; i < ActiveSupport.Inflector.Inflections.uncountable.length; i++)
             {
                 var uncountable = ActiveSupport.Inflector.Inflections.uncountable[i];
-                if (word.toLowerCase === uncountable)
+                if (lc === uncountable)
                 {
                     return uncountable;
                 }
@@ -543,7 +581,7 @@ ActiveSupport = {
             {
                 var singular = ActiveSupport.Inflector.Inflections.irregular[i][0];
                 var plural = ActiveSupport.Inflector.Inflections.irregular[i][1];
-                if ((word.toLowerCase === singular) || (word === plural))
+                if ((lc === singular) || (lc === plural))
                 {
                     return plural;
                 }
@@ -557,6 +595,7 @@ ActiveSupport = {
                     return word.replace(regex, replace_string);
                 }
             }
+						return word;
         },
         /**
          * Generates a singular version of an english word.
@@ -564,12 +603,13 @@ ActiveSupport = {
          * @param {String} word
          * @return {String}
          */
-        singularize: function singularize(word) {
-            var i;
+        singularize: function singularize(word)
+        {
+            var i, lc = word.toLowerCase();
             for (i = 0; i < ActiveSupport.Inflector.Inflections.uncountable.length; i++)
             {
                 var uncountable = ActiveSupport.Inflector.Inflections.uncountable[i];
-                if (word.toLowerCase === uncountable)
+                if (lc === uncountable)
                 {
                     return uncountable;
                 }
@@ -578,9 +618,9 @@ ActiveSupport = {
             {
                 var singular = ActiveSupport.Inflector.Inflections.irregular[i][0];
                 var plural   = ActiveSupport.Inflector.Inflections.irregular[i][1];
-                if ((word.toLowerCase === singular) || (word === plural))
+                if ((lc === singular) || (lc === plural))
                 {
-                    return plural;
+                    return singular;
                 }
             }
             for (i = 0; i < ActiveSupport.Inflector.Inflections.singular.length; i++)
@@ -592,7 +632,20 @@ ActiveSupport = {
                     return word.replace(regex, replace_string);
                 }
             }
+            return word;
         }
+    },
+    /**
+     * Generates a JavaScript Date object from a MySQL DATETIME formatted
+     * string (yyyy-mm-dd HH:MM:ss).
+     * @alias ActiveSupport.dateFromDateTime
+     * @param {String} date_time
+     * @return {Date}
+     */
+    dateFromDateTime: function dateFromDateTime(date_time)
+    {
+        var parts = date_time.replace(/^([0-9]{2,4})-([0-1][0-9])-([0-3][0-9]) (?:([0-2][0-9]):([0-5][0-9]):([0-5][0-9]))?$/,"$1 $2 $3 $4 $5 $6").split(' ');
+        return new Date(parts[0],parts[1]-1,parts[2],parts[3],parts[4],parts[5]);
     },
     /*
      * Date Format 1.2.2
@@ -600,6 +653,8 @@ ActiveSupport = {
      * MIT license
      * Includes enhancements by Scott Trenda <scott.trenda.net> and Kris Kowal <cixar.com/~kris.kowal/>
      *
+     * http://blog.stevenlevithan.com/archives/date-time-format
+     * 
      * Accepts a date, a mask, or a date and a mask.
      * Returns a formatted version of the given date.
      * The date defaults to the current date/time.
@@ -607,11 +662,19 @@ ActiveSupport = {
      */
      
     /**
+     * See: http://blog.stevenlevithan.com/archives/date-time-format
+     * 
+     * If convert_to_local_time is true the Date object will be assume to be GMT
+     * and be converted from GMT to the local time. Local time will be the local
+     * time of the server if running server side, or local time of the client
+     * side if running in the browser.
      * @alias ActiveSupport.dateFormat
      * @param {Date} date
      * @param {String} format
-     * @param {Boolean} utc
+     * @param {Boolean} [convert_to_local_time]
      * @return {String}
+     * @example
+     *     ActiveSupport.dateFormat('yyyy-mm-dd HH:MM:ss');
      */
     dateFormat: function date_format_wrapper()
     {
@@ -640,7 +703,7 @@ ActiveSupport = {
             // Passing date through Date applies Date.parse, if necessary
             date = date ? new Date(date) : new Date();
             if (isNaN(date)) {
-                throw new SyntaxError("invalid date");
+                return ActiveSupport.throwError(new SyntaxError("invalid date"));
             }
 
             mask = String(dF.masks[mask] || mask || dF.masks["default"]);
@@ -763,7 +826,7 @@ ActiveSupport = {
             var response = '';
             if(typeof(value) === 'string' || typeof(value) === 'number' || typeof(value) === 'boolean')
             {
-                response = '<![CDATA[' + (new String(value)).toString() + ']]>';
+                response = '<![CDATA[' + String(value) + ']]>';
             }
             else if(typeof(value) === 'object')
             {
@@ -772,7 +835,7 @@ ActiveSupport = {
                 {
                     for(var i = 0; i < value.length; ++i)
                     {
-                        response += wrap_value(ActiveSupport.Inflector.singularize(key_name),value[i],indent + 1);
+                        response += wrap_value(ActiveSupport.Inflector.singularize(key_name) || key_name,value[i],indent + 1);
                     }
                 }
                 else
@@ -956,7 +1019,7 @@ ActiveSupport = {
         //use native support if available
         if(global_context && 'JSON' in global_context && 'stringify' in global_context.JSON && 'parse' in global_context.JSON)
         {
-          return global_context.JSON;
+            return global_context.JSON;
         }
         
         function f(n) {
@@ -971,11 +1034,6 @@ ActiveSupport = {
                  f(this.getUTCHours())     + ':' +
                  f(this.getUTCMinutes())   + ':' +
                  f(this.getUTCSeconds())   + 'Z';
-        };
-        String.prototype.toJSON =
-        Number.prototype.toJSON =
-        Boolean.prototype.toJSON = function (key) {
-            return this.valueOf();
         };
         var cx = /[\u0000\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
             escapeable = /[\\\"\x00-\x1f\x7f-\x9f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
@@ -1015,7 +1073,7 @@ ActiveSupport = {
                 partial,
                 value = holder[key];
             if (value && typeof value === 'object' &&
-                    typeof value.toJSON === 'function') {
+                    typeof value.toJSON === 'function' && !ActiveSupport.isArray(value)) {
                 value = value.toJSON(key);
             }
             if (typeof rep === 'function') {
@@ -1023,10 +1081,11 @@ ActiveSupport = {
             }
             switch (typeof value) {
             case 'string':
-                return quote(value);
+                return quote(value.valueOf());
             case 'number':
-                return isFinite(value) ? String(value) : 'null';
+                return isFinite(value) ? String(value.valueOf()) : 'null';
             case 'boolean':
+                return String(value.valueOf());
             case 'null':
                 return String(value);
             case 'object':
@@ -1099,7 +1158,7 @@ ActiveSupport = {
                 if (replacer && typeof replacer !== 'function' &&
                         (typeof replacer !== 'object' ||
                          typeof replacer.length !== 'number')) {
-                    throw new Error('JSON.stringify');
+                    return ActiveSupport.throwError(new Error('JSON.stringify'));
                 }
                 return str('', {'': value});
             },
@@ -1140,7 +1199,7 @@ ActiveSupport = {
                     return typeof reviver === 'function' ?
                         walk({'': j}, '') : j;
                 }
-                throw new SyntaxError('JSON.parse');
+                return ActiveSupport.throwError(new SyntaxError('JSON.parse'));
             }
         };
     }()
@@ -1151,6 +1210,10 @@ ActiveSupport = {
 /**
  * @namespace {ActiveEvent}
  * @example
+ * 
+ * ActiveEvent
+ * ===========
+ * 
  * ActiveEvent allows you to create observable events, and attach event
  * handlers to any class or object.
  *
@@ -1171,11 +1234,11 @@ ActiveSupport = {
  * the same name as the method using makeObservable().
  * 
  *     var Message = function(){};
+ *     ActiveEvent.extend(Message);
  *     Message.prototype.send = function(text){
  *         //message sending code here...
  *         this.notify('sent',text);
  *     };
- *     ActiveEvent.extend(Message);
  * 
  *     //make an existing method observable
  *     var observable_hash = new Hash({});
@@ -1203,7 +1266,8 @@ ActiveSupport = {
  *     observable_hash.observe('set',function(key,value){
  *         console.log('observable_hash.set: ' + key + '=' + value);
  *     });
- *     observable_hash.observeOnce(function(key,value){
+ 
+ *     observable_hash.observeOnce('set',function(key,value){
  *         //this will only be called once
  *     });
  * 
@@ -1240,26 +1304,26 @@ ActiveSupport = {
  *     
  *     m.stopObserving('send',observer);
  *     
- *     m.send('test'); //returned true</code></pre>
+ *     m.send('test'); //returned true
  * 
  * Object.options
  * --------------
  * If an object has an options property that contains a callable function with
  * the same name as an event triggered with <b>notify()</b>, it will be
- * treated just like an instance observer. So the falling code is equivalent.
+ * treated just like an instance observer. So the following code is equivalent:
  *
  *     var rating_one = new Control.Rating('rating_one',{  
  *         afterChange: function(new_value){}    
  *     });  
  *     
  *     var rating_two = new Control.Rating('rating_two');  
- *     rating_two.observe('afterChange',function(new_value){});</code></pre>
+ *     rating_two.observe('afterChange',function(new_value){});
  * 
  * MethodCallObserver
  * ------------------
  * The makeObservable() method permanently modifies the method that will
  * become observable. If you need to temporarily observe a method call without
- * permanently modifying it, use the observeMethod(). Pass the name of the
+ * permanently modifying it, use observeMethod(). Pass the name of the
  * method to observe and the observer function will receive all of the
  * arguments passed to the method. An ActiveEvent.MethodCallObserver object is
  * returned from the call to observeMethod(), which has a stop() method on it.
@@ -1267,30 +1331,34 @@ ActiveSupport = {
  * can optionally pass another function to observeMethod(), if you do the
  * MethodCallObserver will be automatically stopped when that function
  * finishes executing.
- *
- *   var h = new Hash({});
- *   ActiveEvent.extend(h);
- *   
- *   var observer = h.observeMethod('set',function(key,value){
- *       console.log(key + '=' + value);
- *   });
- *   h.set('a','one');
- *   h.set('a','two');
- *   observer.stop();
- *   
- *   //console now contains:
- *   //"a = one"
- *   //"b = two"
- *   
- *   //the following does the same as above
- *   h.observeMethod('set',function(key,value){
- *       console.log(key + '=' + value);
- *   },function(){
- *       h.set('a','one');
- *       h.set('b','two');
- *   });
+ * 
+ *     var h = new Hash({});
+ *     ActiveEvent.extend(h);
+ *     
+ *     var observer = h.observeMethod('set',function(key,value){
+ *         console.log(key + '=' + value);
+ *     });
+ *     h.set('a','one');
+ *     h.set('a','two');
+ *     observer.stop();
+ *     
+ *     //console now contains:
+ *     //"a = one"
+ *     //"b = two"
+ *     
+ *     //the following does the same as above
+ *     h.observeMethod('set',function(key,value){
+ *         console.log(key + '=' + value);
+ *     },function(){
+ *         h.set('a','one');
+ *         h.set('b','two');
+ *     });
  */
 var ActiveEvent = null;
+
+if(typeof exports != "undefined"){
+    exports.ActiveEvent = ActiveEvent;
+}
 
 /**
  * @namespace {ActiveEvent.ObservableObject} After calling
@@ -1438,7 +1506,12 @@ ActiveEvent.extend = function extend(object){
      * @return {mixed} Array of return values, or false if the event was
      *  stopped by an observer.
      */
-    object.notify = function notify(event_name){
+    object.notify = function notify(event_name)
+    {
+        if(!this._observers || !this._observers[event_name] || (this._observers[event_name] && this._observers[event_name].length == 0))
+        {
+            return [];
+        }
         this._objectEventSetup(event_name);
         var collected_return_values = [];
         var args = ActiveSupport.arrayFrom(arguments).slice(1);
@@ -1465,18 +1538,31 @@ ActiveEvent.extend = function extend(object){
         object.prototype.stopObserving = object.stopObserving;
         object.prototype.observeOnce = object.observeOnce;
         
-        object.prototype.notify = function notify(event_name)
+        object.prototype.notify = function notify_instance(event_name)
         {
-            if(object.notify)
+            if(
+              (!object._observers || !object._observers[event_name] || (object._observers[event_name] && object._observers[event_name].length == 0)) &&
+              (!this.options || !this.options[event_name]) &&
+              (!this._observers || !this._observers[event_name] || (this._observers[event_name] && this._observers[event_name].length == 0))
+            )
             {
-                var args = ActiveSupport.arrayFrom(arguments).slice(1);
-                args.unshift(this);
-                args.unshift(event_name);
-                object.notify.apply(object,args);
+                return [];
             }
-            this._objectEventSetup(event_name);
             var args = ActiveSupport.arrayFrom(arguments).slice(1);
             var collected_return_values = [];
+            if(object.notify)
+            {
+                object_args = ActiveSupport.arrayFrom(arguments).slice(1);
+                object_args.unshift(this);
+                object_args.unshift(event_name);
+                var collected_return_values_from_object = object.notify.apply(object,object_args);
+                if(collected_return_values_from_object === false)
+                {
+                    return false;
+                }
+                collected_return_values = collected_return_values.concat(collected_return_values_from_object);
+            }
+            this._objectEventSetup(event_name);
             var response;
             if(this.options && this.options[event_name] && typeof(this.options[event_name]) === 'function')
             {
@@ -1551,6 +1637,14 @@ ObservableHash.prototype.get = function get(key)
     return this._object[key];
 };
 
+ObservableHash.prototype.unset = function unset(key)
+{
+    this.notify('unset',key);
+    var value = this._object[key];
+    delete this._object[key];
+    return value;
+};
+
 ObservableHash.prototype.toObject = function toObject()
 {
     return this._object;
@@ -1562,7 +1656,11 @@ ActiveEvent.ObservableHash = ObservableHash;
 
 })();
  
-ActiveRoutes = null;
+var ActiveRoutes = null;
+
+if(typeof exports != "undefined"){
+    exports.ActiveRoutes = ActiveRoutes;
+}
 
 (function() {
  
@@ -1574,6 +1672,10 @@ ActiveRoutes = null;
  * @param {Object} [options]
  * @return {ActiveRoutes}
  * @example
+ *
+ * ActiveRoutes
+ * ============
+ * 
  * ActiveRoutes maps URI strings to method calls, and visa versa. It shares a
  * similar syntax to Rails Routing, but is framework agnostic and can map
  * calls to any type of object. Server side it can be used to map requests for
@@ -1581,18 +1683,6 @@ ActiveRoutes = null;
  * to provide deep linking and back button / history support for your Ajax
  * application.
  * 
- * Options
- * -------
- * You can pass a hash of options as the third parameter to the ActiveRoutes
- * constructor. This hash can contain the following keys:
- * 
- * - base: default '', the default path / url prefix to be used in a generated url
- * - classSuffix: default '' if it was "Controller", calling "/blog/post/5" would call BlogController.post instead of Blog.post
- * - dispatcher: default ActiveRoutes.prototype.defaultDispatcher, the dispatcher function to be called when dispatch() is called and a route is found
- * - camelizeObjectName: default true, if true, trying to call "blog_controller" through routes will call "BlogController"
- * - camelizeMethodName: default true, if true, trying to call "my_method_name" through routes will call "myMethodName"
- * - camelizeGeneratedMethods: default true, will export generated methods into the scope as "articleUrl" instead of "article_url"
- *
  * Declaring Routes
  * ----------------
  * Wether declared in the constructor, or with addRoute(), routes can have up
@@ -1616,6 +1706,18 @@ ActiveRoutes = null;
  *       ['/:object/:method']
  *     ],Application);
  * 
+ * Options
+ * -------
+ * You can pass a hash of options as the third parameter to the ActiveRoutes
+ * constructor. This hash can contain the following keys:
+ * 
+ * - base: default '', the default path / url prefix to be used in a generated url
+ * - classSuffix: default '' if it was "Controller", calling "/blog/post/5" would call BlogController.post instead of Blog.post
+ * - dispatcher: default ActiveRoutes.prototype.defaultDispatcher, the dispatcher function to be called when dispatch() is called and a route is found
+ * - camelizeObjectName: default true, if true, trying to call "blog_controller" through routes will call "BlogController"
+ * - camelizeMethodName: default true, if true, trying to call "my_method_name" through routes will call "myMethodName"
+ * - camelizeGeneratedMethods: default true, will export generated methods into the scope as "articleUrl" instead of "article_url"
+ * 
  * Catch All Routes
  * ----------------
  * If you want to route all requests below a certain path to a given method,
@@ -1634,7 +1736,7 @@ ActiveRoutes = null;
  * parameter will be checked against. Each value checked by a regular
  * expression or function is always a string.
  * 
- *     route_set.addRoute('/article/:article_id/:comment_id,{
+ *     route_set.addRoute('/article/:article_id/:comment_id',{
  *         article_id: /^\d+$/,
  *         comment_id: function(comment_id){
  *             return comment_id.match(/^\d+$/);
@@ -1683,7 +1785,7 @@ ActiveRoutes = null;
  * accessible with the "history" property, and is traversable with the
  * next() and back() methods.
  */
-ActiveRoutes = function ActiveRoutes(routes,scope,options)
+ActiveRoutes = function initialize(routes,scope,options)
 {
     this.initialized = false;
     this.error = false;
@@ -1707,7 +1809,10 @@ ActiveRoutes = function ActiveRoutes(routes,scope,options)
     var i;
     for(i = 0; i < routes.length; ++i)
     {
-        this.addRoute.apply(this,routes[i]);
+        if(routes[i]) //fix for accidental trailing commas in IE arrays
+        {
+            this.addRoute.apply(this,routes[i]);
+        }
     }
     var current_route_set = this;
     this.scope[this.options.camelizeGeneratedMethods ? 'urlFor' : 'url_for'] = function generatedUrlFor(){
@@ -1825,15 +1930,15 @@ ActiveRoutes.prototype.addRoute = function addRoute()
     };
     if(!Validations.hasPath(route))
     {
-        throw Errors.NoPathInRoute;
+        return ActiveSupport.throwError(Errors.NoPathInRoute);
     }
     if(!Validations.hasObject(route))
     {
-        throw Errors.NoObjectInRoute + route.path;
+        return ActiveSupport.throwError(Errors.NoObjectInRoute,route.path);
     }
     if(!Validations.hasMethod(route))
     {
-        throw Errors.NoMethodInRoute + route.path;
+        return ActiveSupport.throwError(Errors.NoMethodInRoute,route.path);
     }
     if(this.initialized)
     {
@@ -1865,14 +1970,14 @@ ActiveRoutes.normalizePath = function normalizePath(path)
 };
 
 var Errors = {
-    NoPathInRoute: 'No path was specified in the route',
-    NoObjectInRoute: 'No :object was specified in the route: ',
-    NoMethodInRoute: 'No :method was specified in the route: ',
-    ObjectDoesNotExist: 'The following object does not exist: ',
-    MethodDoesNotExist: 'The following method does not exist: ',
-    MethodNotCallable: 'The following method is not callable: ',
-    NamedRouteDoesNotExist: 'The following named route does not exist: ',
-    UnresolvableUrl: 'Could not resolve the url: '
+    NoPathInRoute: ActiveSupport.createError('No path was specified in the route'),
+    NoObjectInRoute: ActiveSupport.createError('No :object was specified in the route: '),
+    NoMethodInRoute: ActiveSupport.createError('No :method was specified in the route: '),
+    ObjectDoesNotExist: ActiveSupport.createError('The following object does not exist: '),
+    MethodDoesNotExist: ActiveSupport.createError('The following method does not exist: '),
+    MethodNotCallable: ActiveSupport.createError('The following method is not callable: '),
+    NamedRouteDoesNotExist: ActiveSupport.createError('The following named route does not exist: '),
+    UnresolvableUrl: ActiveSupport.createError('Could not resolve the url: ')
 };
 ActiveRoutes.Errors = Errors;
 
@@ -1936,7 +2041,7 @@ ActiveRoutes.prototype.match = function(path){
     var original_path = path;
     this.error = false;
     //make sure the path is a copy
-    path = ActiveRoutes.normalizePath((new String(path)).toString());
+    path = ActiveRoutes.normalizePath(String(path));
     //handle extension
     var extension = path.match(/\.([^\.]+)$/);
     if(extension)
@@ -1963,7 +2068,6 @@ ActiveRoutes.prototype.match = function(path){
         var route_path_components = route.path.split('/');
         var route_path_length = route_path_components.length;
         var valid = true;
-        
         //length of path components must match, but must treat "/blog", "/blog/action", "/blog/action/id" the same
         if(path_length <= route_path_length || route_path_components[route_path_components.length - 1] == '*'){
             for(var ii = 0; ii < route_path_components.length; ++ii)
@@ -1971,19 +2075,21 @@ ActiveRoutes.prototype.match = function(path){
                 var path_component = path_components[ii];
                 var route_path_component = route_path_components[ii];
                 //catch all
-                if(route_path_component[0] == '*')
+                if(route_path_component.charAt(0) == '*')
                 {
                     route.params.path = path_components.slice(ii);
                     return this.checkAndCleanRoute(route,original_path); 
                 }
                 //named component
-                else if(route_path_component[0] == ':')
+                else if(route_path_component.charAt(0) == ':')
                 {
                     var key = route_path_component.substr(1);
                     if(path_component && route.params.requirements && route.params.requirements[key] &&
                         !(typeof(route.params.requirements[key]) == 'function'
-                            ? route.params.requirements[key]((new String(path_component).toString()))
-                            : path_component.match(route.params.requirements[key])))
+                            ? route.params.requirements[key](String(path_component))
+                            : path_component.match(route.params.requirements[key])
+                        )
+                    )
                     {
                         valid = false;
                         break;
@@ -2037,11 +2143,11 @@ ActiveRoutes.prototype.dispatch = function dispatch(path)
         {
             if(this.error)
             {
-                throw this.error;
+                return ActiveSupport.throwError(this.error);
             }
             else
             {
-                throw Errors.UnresolvableUrl + path;
+                return ActiveSupport.throwError(Errors.UnresolvableUrl,path);
             }
         }
     }
@@ -2135,7 +2241,7 @@ ActiveRoutes.prototype.cleanPath = function cleanPath(path,params,only_path)
         path = path.replace(/\/?\:method/,'');
     }
     path = path.replace(/\/?index$/,'');
-    if(path[0] != '/')
+    if(path.charAt(0) != '/')
     {
         path = '/' + path;
     }
@@ -2150,11 +2256,11 @@ ActiveRoutes.performParamSubstitution = function performParamSubstitution(path,r
         if(path.match(':' + p) && params[p])
         {
             if(route.params.requirements && route.params.requirements[p]){
-                if(typeof(route.params.requirements[p]) == 'function' && !route.params.requirements[p]((new String(params[p]).toString())))
+                if(typeof(route.params.requirements[p]) == 'function' && !route.params.requirements[p](String(params[p])))
                 {
                     continue;
                 }
-                else if(!route.params.requirements[p]((new String(params[p]).toString())))
+                else if(!route.params.requirements[p].exec(String(params[p])))
                 {
                     continue;
                 }
@@ -2196,7 +2302,7 @@ ActiveRoutes.prototype.urlFor = function urlFor(params)
         }
         if(found === false)
         {
-            throw Errors.NamedRouteDoesNotExistError + params;
+            return ActiveSupport.throwError(Errors.NamedRouteDoesNotExistError,params);
         }
         else
         {

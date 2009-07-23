@@ -59,6 +59,10 @@ var ActiveTest = {
     },
     run: function run()
     {
+        ActiveTest.summary = [];
+        ActiveTest.lastNote = '';
+        ActiveTest.currentGroupName = null;
+        ActiveTest.currentTestName = null;
         for(var group_name in ActiveTest.Tests)
         {
             ActiveTest.log(group_name + ' Test Starting');
@@ -85,7 +89,7 @@ var ActiveTest = {
                         catch(e)
                         {
                             ++ActiveTest.error;
-                            ActiveTest.log('Error' + (ActiveTest.lastNote ? ': ' + ActiveTest.lastNote : ''));
+                            ActiveTest.log('Error after test' + (ActiveTest.lastNote ? ': ' + ActiveTest.lastNote : ''));
                             ActiveTest.log(e);
                             var output = '[' + group_name + ' Pass:' + ActiveTest.pass +',Fail:' + ActiveTest.fail + ',Error:' + ActiveTest.error + ']';
                             ActiveTest.summary.push(output);

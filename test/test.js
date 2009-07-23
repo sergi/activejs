@@ -59,6 +59,10 @@ var ActiveTest = {
     },
     run: function run()
     {
+        ActiveTest.summary = [];
+        ActiveTest.lastNote = '';
+        ActiveTest.currentGroupName = null;
+        ActiveTest.currentTestName = null;
         for(var group_name in ActiveTest.Tests)
         {
             ActiveTest.log(group_name + ' Test Starting');
@@ -85,7 +89,7 @@ var ActiveTest = {
                         catch(e)
                         {
                             ++ActiveTest.error;
-                            ActiveTest.log('Error' + (ActiveTest.lastNote ? ': ' + ActiveTest.lastNote : ''));
+                            ActiveTest.log('Error after test' + (ActiveTest.lastNote ? ': ' + ActiveTest.lastNote : ''));
                             ActiveTest.log(e);
                             var output = '[' + group_name + ' Pass:' + ActiveTest.pass +',Fail:' + ActiveTest.fail + ',Error:' + ActiveTest.error + ']';
                             ActiveTest.summary.push(output);
@@ -152,7 +156,11 @@ ActiveTest.Tests.ActiveRecord.setup = function(proceed)
         ActiveRecord.execute('DROP TABLE IF EXISTS categories');
         ActiveRecord.execute('DROP TABLE IF EXISTS categorizations');
         ActiveRecord.execute('DROP TABLE IF EXISTS field_type_testers');
-        
+        ActiveRecord.execute('DROP TABLE IF EXISTS singular_table_name');
+        ActiveRecord.execute('DROP TABLE IF EXISTS custom_table');
+        ActiveRecord.execute('DROP TABLE IF EXISTS guid');
+        ActiveRecord.execute('DROP TABLE IF EXISTS reserved');
+
         //define Posts via SQL
         if(ActiveRecord.adapter == ActiveRecord.Adapters.JaxerMySQL)
         {
@@ -174,7 +182,7 @@ ActiveTest.Tests.ActiveRecord.setup = function(proceed)
         }
 
         //define Comments via Migrations
-        Comment = ActiveRecord.define('comments',{
+        Comment = ActiveRecord.create('comments',{
             title: '',
             post_id: 0,
             user_id: 0,
@@ -189,11 +197,11 @@ ActiveTest.Tests.ActiveRecord.setup = function(proceed)
         Comment.belongsTo('user');
         Comment.belongsTo(Post);
 
-        CreditCard = ActiveRecord.define('credit_cards',{
+        CreditCard = ActiveRecord.create('credit_cards',{
             number: 0
         });
 
-        User = ActiveRecord.define('users',{
+        User = ActiveRecord.create('users',{
             name: '',
             password: '',
             comment_count: 0,
@@ -211,13 +219,13 @@ ActiveTest.Tests.ActiveRecord.setup = function(proceed)
             dependent: true
         });
         
-        ModelWithStringDates = ActiveRecord.define('string_dates',{
+        ModelWithStringDates = ActiveRecord.create('string_dates',{
             name: '',
             created: '',
             updated: ''
         });
         
-        ModelWithDates = ActiveRecord.define('dates',{
+        ModelWithDates = ActiveRecord.create('dates',{
             name: '',
             created: {
                 type: 'DATETIME'
@@ -227,7 +235,7 @@ ActiveTest.Tests.ActiveRecord.setup = function(proceed)
             }
         });
         
-        Article = ActiveRecord.define('articles',{
+        Article = ActiveRecord.create('articles',{
             name: ''
         });
         Article.hasMany('Categorization');
@@ -235,7 +243,7 @@ ActiveTest.Tests.ActiveRecord.setup = function(proceed)
             through: 'Categorization'
         });
         
-        Category = ActiveRecord.define('categories',{
+        Category = ActiveRecord.create('categories',{
             name: ''
         });
         Category.hasMany('Categorization');
@@ -243,7 +251,7 @@ ActiveTest.Tests.ActiveRecord.setup = function(proceed)
             through: 'Categorization'
         });
         
-        Categorization = ActiveRecord.define('categorizations',{
+        Categorization = ActiveRecord.create('categorizations',{
             article_id: 0,
             category_id: 0
         });
@@ -254,7 +262,7 @@ ActiveTest.Tests.ActiveRecord.setup = function(proceed)
             dependent: true
         });
         
-        FieldTypeTester = ActiveRecord.define('field_type_testers',{
+        FieldTypeTester = ActiveRecord.create('field_type_testers',{
             string_field: '',
             number_field: 0,
             default_value_field: 'DEFAULT',
@@ -266,6 +274,34 @@ ActiveTest.Tests.ActiveRecord.setup = function(proceed)
                 type: 'MEDIUMTEXT',
                 value: 'DEFAULT'
             }
+        });
+        
+        SingularTableName = ActiveRecord.create('singular_table_name',{
+            string_field: ''
+        });
+        
+        Custom = ActiveRecord.create({
+            tableName: 'custom_table',
+            modelName: 'Orange'
+        },{
+            custom_id: {
+                primaryKey: true
+            },
+            name: ''
+        });
+
+        Guid = ActiveRecord.create('guid',{
+            guid: {
+                primaryKey: true,
+                type: 'VARCHAR(255)'
+            },
+            data: ''
+        });
+
+        Reserved = ActiveRecord.create('reserved',{
+            to: { primaryKey: true },
+            from: '',
+            select: ''
         });
         
         if(proceed)
@@ -299,6 +335,10 @@ ActiveTest.Tests.ActiveRecord.basic = function(proceed)
         }
         else
         {
+            //ensure singular table name model can write / read
+            var a = SingularTableName.create({string_field: 'test'});
+            assert(SingularTableName.find(a.id).string_field == 'test','Singular table names supported.');
+            
             //Comment is defined by ActiveRecord, Post is defined by SQL
             var a = new Comment({
                 title: 'a',
@@ -318,7 +358,7 @@ ActiveTest.Tests.ActiveRecord.basic = function(proceed)
                 title: 'c',
                 body: 'cc'
             });
-            assert(c.id == b.id + 1,'Record incrimented id.');
+            assert(c.id == b.id + 1,'Record incremented id.');
             assert(Comment.find(c.id).title == 'c','Record persisted.');
             assert(Comment.count() == 2,'Record count is correct.');
             assert(Comment.count({
@@ -355,7 +395,20 @@ ActiveTest.Tests.ActiveRecord.basic = function(proceed)
             var count = Comment.count();
             c.destroy();
             assert(!c.reload() && count - 1 == Comment.count(),'destroy()');
-
+            
+            //create with an id preserves id and still acts as "created"
+            var called = false;
+            Comment.observeOnce('afterCreate',function(){
+                called = true;
+            });
+            var d = Comment.create({
+                id: 50,
+                title: 'd',
+                body: 'dd'
+            });
+            d.reload();
+            assert(d.id == 50 && called,'create with an id preserves id and still acts as "created"');
+            
             Comment.destroy('all');
             assert(Comment.count() == 0,'destroy("all")');
             
@@ -385,6 +438,65 @@ ActiveTest.Tests.ActiveRecord.basic = function(proceed)
             assert(empty_record.default_value_field == 'DEFAULT','Default value is set on simple field type.');
             assert(empty_record.custom_type_field == '','Empty value is set on custom field type with no default specification.');
             assert(empty_record.custom_type_field_with_default == 'DEFAULT','Default value is set on custom field type with default specification.');
+            
+            //should find one false
+            assert(FieldTypeTester.find({
+                where: {
+                    boolean_field: false
+                }
+            })[0].id == field_test_two.id,'find({where: {boolean_field: false}})');
+            
+            //should find two true (since true is the default value and we created an empty record)
+            assert(FieldTypeTester.find({
+                where: {
+                    boolean_field: true
+                }
+            })[0].id == field_test_one.id,'find({where: {boolean_field: true}})');
+            
+            assert(FieldTypeTester.findByBooleanField(true).id == field_test_one.id,'findByBooleanField(true)');
+            assert(FieldTypeTester.findByBooleanField(false).id == field_test_two.id,'findByBooleanField(false)');
+
+            // Identifiers that are reserved words should be quoted automatically.
+            var reserved_test = Reserved.create({
+                from: 'b',
+                select: 'c'
+            });
+            assert(Reserved.count() == 1,'Reserved.create');
+            assert(Reserved.find(reserved_test.to).from == 'b','Reserved.find');
+            assert(Reserved.findByFrom('b').select == 'c','Reserved.findByFrom');
+
+            // Identifiers must be quoted explicitly in SQL fragments.
+            assert(Reserved.find({
+              select: ['"to" + "from"', '"select"']
+            })[0].select == 'c','Reserved.find({select:...})');
+
+            // Keys of {where: {...}} properties are assumed to be column names...
+            assert(Reserved.find({
+              where: {select: 'c'}
+            })[0].select == 'c','Reserved.find({where:{...}})');
+            try {
+              // ...so that format won't work for arbitrary SQL fragments...
+              Reserved.find({
+                where: {'length("select")': 1}
+              });
+              assert(false,'Reserved.find({where:{\'length...\': 1}) throws an exception')
+            } catch (e) {
+            }
+            // ...but you can use {where: '...'} instead.
+            assert(Reserved.find({
+              where: 'length("select") = 1'
+            })[0].select == 'c','Reserved.find({where:\'length... = 1\'})');
+
+            reserved_test.set('select', 'd');
+            assert(reserved_test.select == 'd','reserved_test.set');
+            reserved_test.save();
+            assert(Reserved.find(reserved_test.to).select == 'd','reserved_test.save');
+
+            Reserved.updateAll({from: 'me'}, {select: 'd'});
+            assert(Reserved.find(reserved_test.to).from == 'me','Reserved.updateAll');
+
+            reserved_test.destroy();
+            assert(Reserved.count() == 0,'Reserved.destroy');
             
             if(proceed)
                 proceed();
@@ -471,17 +583,23 @@ ActiveTest.Tests.ActiveRecord.date = function(proceed)
             var a = ModelWithDates.create({
                 name: 'a'
             });
-            assert(a.get('created').match(/^\d{4}/) && a.get('updated').match(/^\d{4}/),'created and updated set via date field');
+            assert(ActiveSupport.dateFormat(a.get('created'),'yyyy-mm-dd HH:MM:ss').match(/^\d{4}/) && ActiveSupport.dateFormat(a.get('updated'),'yyyy-mm-dd HH:MM:ss').match(/^\d{4}/),'created and updated set via date field');
             var old_date = a.get('updated');
             a.set('updated','');
             a.save();
             var new_date = a.get('updated');
             var saved_date = ModelWithDates.find(a.id).get('updated');
-            if(saved_date instanceof Date){
-                saved_date = ActiveSupport.dateFormat(saved_date,'yyyy-mm-dd HH:MM:ss',true);
-            }
-            assert(saved_date == new_date,'created and updated persist via date field');
+            assert(saved_date.toString() == new_date.toString(),'created and updated persist via date field');
             
+            //make sure dates are preserved
+            var reload_test = ModelWithDates.find(a.id);
+            var old_created = reload_test.get('created');
+            reload_test.save();
+            reload_test.reload();
+            reload_test.save();
+            reload_test.reload();
+            assert(reload_test.get('created').toString() == old_created.toString(),'created time is preserved on update');
+
             if(proceed)
                 proceed();
         }
@@ -523,7 +641,18 @@ ActiveTest.Tests.ActiveRecord.finders = function(proceed)
                     title: 'b'
                 }
             }).title == 'b','find({first: true, where: Hash})');
-
+            assert(Comment.find({
+                first: true,
+                where: 'title = "b"'
+            }).title == 'b','find({first: true, where: string})');
+            b = Comment.find('SELECT * FROM comments WHERE title = ? LIMIT 1','b');
+            assert(b[0] && b[0].title == 'b','find(SQL string with WHERE, LIMIT and param substituion)');
+            b = Comment.find({
+              where: ['title = ?','b'],
+              limit: 1
+            });
+            assert(b[0] && b[0].title == 'b','find(SQL string with WHERE, LIMIT and param substituion via find)');            
+            
             assert(Comment.find().length == 3 && Comment.find({all: true}).length == 3,'find({all: true})');
 
             var asc = Comment.find({
@@ -544,6 +673,68 @@ ActiveTest.Tests.ActiveRecord.finders = function(proceed)
             assert(typeof(Comment.findByTitle) != 'undefined','findBy#{X} exists.');
             assert(typeof(Comment.findAllByTitle) != 'undefined','findAllBy#{X} exists.');
             assert(Comment.findByTitle('a').title == a.title && Comment.findById(a.id).id == a.id,'findByX works');
+            
+            //test GROUP BY
+            Comment.destroy('all');
+            var one = Comment.create({title: 'a'});
+            var two = Comment.create({title: 'a'});
+            var three = Comment.create({title: 'b'});
+            var result = Comment.find({
+                group: 'title',
+                order: 'id ASC'
+            });
+            assert(result[0].title == 'a' && result[1].title == 'b','GROUP BY clause via params works');
+            var result = Comment.find('SELECT * FROM comments GROUP BY title ORDER BY id ASC');
+            assert(result[0].title == 'a' && result[1].title == 'b','GROUP BY clause via SQL works');
+            
+            //test find multiple by id
+            //add extra record to make sure it is not finding all
+            Comment.create({
+                title: 'c'
+            });
+            var a = Comment.find(one.id,two.id,three.id);
+            assert(a.length == 3 && a[0].id == one.id && a[1].id == two.id && a[2].id == three.id,'WHERE id IN(arguments array)');
+            var b = Comment.find([one.id,two.id,three.id]);
+            assert(b.length == 3 && b[0].id == one.id && b[1].id == two.id && b[2].id == three.id,'WHERE id IN(array)');
+            var c = Comment.find('SELECT * FROM comments WHERE id IN(?,?,?)',one.id,two.id,three.id);
+            assert(c.length == 3 && c[0].id == one.id && c[1].id == two.id && c[2].id == three.id,'WHERE id IN(array) via SQL string');
+            
+            if(proceed)
+                proceed();
+        }
+    }
+};
+
+ActiveTest.Tests.ActiveRecord.id = function(proceed)
+{
+    with (ActiveTest)
+    {
+        if (ActiveRecord.asynchronous)
+        {
+
+        }
+        else
+        {
+            var a = Custom.create({name: 'test'});
+            assert(Custom.find(a.custom_id).name == 'test', 'Custom integer primary key.');
+
+            var b = Guid.create({guid: '123', data: 'test'});
+            assert(Guid.primaryKeyName == 'guid', 'model.primaryKeyName');
+            assert(b.primaryKeyName == 'guid', 'record.primaryKeyName');
+            assert(Guid.findByGuid('123').data == 'test', 'findByGuid');
+            assert(Guid.get('123').data == 'test', 'get(guid)');
+
+            Guid.update('123', {data: 'changed'});
+            assert(b.reload() && b.data == 'changed', 'Guid.update && b.reload');
+
+            b.set('guid', 'abc');
+            assert(b.guid == 'abc', 'guid change');
+            b.save();
+            assert(!Guid.get('123'), 'old guid is gone');
+            assert(Guid.get('abc').data == 'changed', 'new guid is saved');
+
+            assert(Guid.destroy('abc') && Guid.count() == 0, 'Guid.destroy');
+
             if(proceed)
                 proceed();
         }
@@ -912,6 +1103,28 @@ ActiveTest.Tests.ActiveRecord.serialization = function(proceed)
             });
             var sample = Comment.find(b.id).test_2;
             assert(sample[0] == b.test_2[0] && sample[2][1] == b.test_2[2][1],'Array serialization.');
+            a.destroy();
+            b.destroy();
+            
+            var ted = User.create({name: 'ted'});
+            var one = ted.createComment({title: 'title one',body: 'comment one'});
+            var two = ted.createComment({title: 'title two',body: 'comment two'});
+            //JSON
+            
+            //item
+            assert(ActiveSupport.JSON.parse(ted.toJSON()).name === ted.name && ActiveSupport.JSON.parse(ted.toJSON()).id === ted.id,'JSON parse/serialize item');
+            
+            //array
+            var result = Comment.find({all: true});
+            assert(ActiveSupport.JSON.parse(result.toJSON())[0].body === result[0].body,'JSON parse/serialize array');
+            
+            //nested
+            var json = ted.toJSON({
+              comments: ted.getCommentList().toArray()
+            });
+            var parsed = ActiveSupport.JSON.parse(json);
+            assert(ted.getCommentList()[0].body === parsed.comments[0].body,'JSON parse/serialize object with nested array');
+            
             if(proceed)
                 proceed();
         }
@@ -1093,7 +1306,7 @@ ActiveTest.Tests.ActiveRecord.transactions = function(proceed)
                 });
                 
             }catch(e){
-                assert(Comment.count() == count + 2 && e == 'error','Transaction ROLLBACK without handler');
+                assert(Comment.count() == count + 2 && e.message == 'error','Transaction ROLLBACK without handler');
             }
             Comment.transaction(function(){
                 var c = Comment.create({
@@ -1104,7 +1317,7 @@ ActiveTest.Tests.ActiveRecord.transactions = function(proceed)
                 });
                 throw 'error';
             },function(e){
-                assert(Comment.count() == count + 2 && e == 'error','Transaction ROLLBACK with handler');
+                assert(Comment.count() == count + 2 && e.message == 'error','Transaction ROLLBACK with handler');
             });
             if(proceed)
                 proceed();
@@ -1327,7 +1540,7 @@ ActiveTest.Tests.Routes.matching = function(proceed)
         var routes_without_params = new ActiveRoutes([
             ['index','/home',{object: 'page',method: 'index'}],
             ['contact','pages/contact',{object: 'page', method: 'index'}],
-            ['/pages/about/',{object: 'page',method: 'about'}],
+            ['/pages/about/',{object: 'page',method: 'about'}]
         ],test_scope);
         
         assert(routes_without_params.match('/home').name == 'index','match() /home');
@@ -1347,7 +1560,7 @@ ActiveTest.Tests.Routes.matching = function(proceed)
         //test index handling
         var routes_without_params = new ActiveRoutes([
             ['index','pages',{object: 'page',method: 'index'}],
-            ['contact','pages/contact',{object: 'page', method: 'index'}],
+            ['contact','pages/contact',{object: 'page', method: 'index'}]
         ],test_scope);
         
         assert(routes_without_params.match('pages').name == 'index','index match() pages');
@@ -1357,7 +1570,7 @@ ActiveTest.Tests.Routes.matching = function(proceed)
         
         var routes_without_params = new ActiveRoutes([
             ['index','pages/index',{object: 'page',method: 'index'}],
-            ['contact','pages/contact',{object: 'page', method: 'index'}],
+            ['contact','pages/contact',{object: 'page', method: 'index'}]
         ],test_scope);
         
         assert(routes_without_params.match('pages').name == 'index','index match() pages');
@@ -1369,7 +1582,6 @@ ActiveTest.Tests.Routes.matching = function(proceed)
         var routes = new ActiveRoutes(test_valid_route_set,test_scope);
             
         var match;
-        
         match = routes.match('/blog/post/5');
         assert(match.name == 'post' && match.params.id == 5 && match.params.method == 'post','complex match() /blog/post/5');
         
@@ -1488,7 +1700,7 @@ ActiveTest.Tests.Routes.dispatch = function(proceed)
         assert(routes.history.length == 0,'history starts empty');
         
         routes.dispatch('/address/wa/98103');
-        assert(routes.history.length == 1,'history incrimented');
+        assert(routes.history.length == 1,'history incremented');
         assert(routes.history[routes.history.length - 1].params.zip == '98103' == 1,'history contains params');
         last_action = logged_actions.pop()[0];
         assert(last_action.zip == '98103' && last_action.method == 'address','dispatcher called action from string');
@@ -1518,11 +1730,11 @@ ActiveTest.Tests.Routes.history = function(proceed)
         routes.dispatch('/address/wa/98104');
         routes.dispatch('/address/wa/98105');
         
-        assert(routes.history.length == 3,'history incrimented');
-        assert(routes.index == 2,'index incrimented');
+        assert(routes.history.length == 3,'history incremented');
+        assert(routes.index == 2,'index incremented');
         
         var back_response = routes.back();
-        assert(routes.history.length == 3,'history not incrimented by back()');
+        assert(routes.history.length == 3,'history not incremented by back()');
         assert(routes.index == 1,'index decrimented by back()');
         last_action = logged_actions.pop()[0];
         assert(back_response && last_action.zip == '98104','back() calls correct action');
@@ -1533,8 +1745,8 @@ ActiveTest.Tests.Routes.history = function(proceed)
         
         routes.next();
         routes.next();
-        assert(routes.history.length == 3,'history not incrimented by next()');
-        assert(routes.index == 2,'index incrimented by next()');
+        assert(routes.history.length == 3,'history not incremented by next()');
+        assert(routes.index == 2,'index incremented by next()');
         last_action = logged_actions.pop()[0];
         assert(last_action.zip == '98105','next() calls correct action');
         
@@ -1543,6 +1755,29 @@ ActiveTest.Tests.Routes.history = function(proceed)
     }
     if(proceed())
         proceed();
+};
+
+ActiveTest.Tests.ActiveSupport = {};
+ActiveTest.Tests.ActiveSupport.ActiveSupport = function(proceed)
+{
+    with (ActiveTest)
+    {
+        // Inflector
+        assert(ActiveSupport.Inflector.pluralize('cat') == 'cats', 'pluralize(cat)');
+        assert(ActiveSupport.Inflector.pluralize('cats') == 'cats', 'pluralize(cats)');
+
+        assert(ActiveSupport.Inflector.singularize('cat') == 'cat', 'singularize(cat)');
+        assert(ActiveSupport.Inflector.singularize('cats') == 'cat', 'singularize(cats)');
+
+        assert(ActiveSupport.Inflector.pluralize('person') == 'people', 'pluralize(person)');
+        assert(ActiveSupport.Inflector.pluralize('people') == 'people', 'pluralize(people)');
+
+        assert(ActiveSupport.Inflector.singularize('people') == 'person', 'singularize(people)');
+        assert(ActiveSupport.Inflector.singularize('person') == 'person', 'singularize(person)');
+
+        if(proceed)
+            proceed();
+    }
 };
 
 ActiveTest.Tests.View = {};
@@ -1569,8 +1804,8 @@ ActiveTest.Tests.View.builder = function(proceed)
                             tr(
                                 td(
                                     ul(
-                                        li(),
-                                        li(span(b('test')))
+                                        li(span(b('test'))),
+                                        li()
                                     )
                                 ),
                                 td(
@@ -1592,12 +1827,33 @@ ActiveTest.Tests.View.builder = function(proceed)
         });
         var deep_instance = new DeepView();
         var arguments_instance = new ArgumentsTestView();
-
         assert(arguments_instance.container.firstChild.firstChild.nodeValue == 'one' && arguments_instance.container.firstChild.childNodes[2].tagName == 'B','mix and match of text and elements');
+        assert(deep_instance.container.firstChild.firstChild.firstChild.firstChild.firstChild.firstChild.firstChild.firstChild.firstChild.nodeValue == 'test','deep builder node test');
         
         if(proceed)
             proceed()
     }
+};
+
+ActiveTest.Tests.View.template = function(proceed)
+{
+    with(ActiveTest)
+    {
+        var simple_template = new ActiveView.Template('<b><%= test %></b>');
+        var output_a = simple_template.render({
+            test: 'a'
+        });
+        assert(output_a == '<b>a</b>','Simple render with variable replacement.');
+        var output_b = simple_template.render({
+            test: 'b'
+        });
+        assert(output_b == '<b>b</b>','Render output is not cached.');
+        var loop_template = new ActiveView.Template('<% for(var i = 0; i < list.length; ++i){ %><%= list[i] %><% } %>');
+        var loop_output = loop_template.render({list:['a','b','c']});
+        assert(loop_output == 'abc','Loop functions correctly.');
+    }
+    if(proceed)
+        proceed()
 };
 
 ActiveTest.Tests.Controller = {};

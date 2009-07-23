@@ -35,6 +35,10 @@ ActiveTest.Tests.ActiveRecord.basic = function(proceed)
         }
         else
         {
+            //ensure singular table name model can write / read
+            var a = SingularTableName.create({string_field: 'test'});
+            assert(SingularTableName.find(a.id).string_field == 'test','Singular table names supported.');
+            
             //Comment is defined by ActiveRecord, Post is defined by SQL
             var a = new Comment({
                 title: 'a',
@@ -54,7 +58,7 @@ ActiveTest.Tests.ActiveRecord.basic = function(proceed)
                 title: 'c',
                 body: 'cc'
             });
-            assert(c.id == b.id + 1,'Record incrimented id.');
+            assert(c.id == b.id + 1,'Record incremented id.');
             assert(Comment.find(c.id).title == 'c','Record persisted.');
             assert(Comment.count() == 2,'Record count is correct.');
             assert(Comment.count({
@@ -91,7 +95,20 @@ ActiveTest.Tests.ActiveRecord.basic = function(proceed)
             var count = Comment.count();
             c.destroy();
             assert(!c.reload() && count - 1 == Comment.count(),'destroy()');
-
+            
+            //create with an id preserves id and still acts as "created"
+            var called = false;
+            Comment.observeOnce('afterCreate',function(){
+                called = true;
+            });
+            var d = Comment.create({
+                id: 50,
+                title: 'd',
+                body: 'dd'
+            });
+            d.reload();
+            assert(d.id == 50 && called,'create with an id preserves id and still acts as "created"');
+            
             Comment.destroy('all');
             assert(Comment.count() == 0,'destroy("all")');
             
@@ -121,6 +138,65 @@ ActiveTest.Tests.ActiveRecord.basic = function(proceed)
             assert(empty_record.default_value_field == 'DEFAULT','Default value is set on simple field type.');
             assert(empty_record.custom_type_field == '','Empty value is set on custom field type with no default specification.');
             assert(empty_record.custom_type_field_with_default == 'DEFAULT','Default value is set on custom field type with default specification.');
+            
+            //should find one false
+            assert(FieldTypeTester.find({
+                where: {
+                    boolean_field: false
+                }
+            })[0].id == field_test_two.id,'find({where: {boolean_field: false}})');
+            
+            //should find two true (since true is the default value and we created an empty record)
+            assert(FieldTypeTester.find({
+                where: {
+                    boolean_field: true
+                }
+            })[0].id == field_test_one.id,'find({where: {boolean_field: true}})');
+            
+            assert(FieldTypeTester.findByBooleanField(true).id == field_test_one.id,'findByBooleanField(true)');
+            assert(FieldTypeTester.findByBooleanField(false).id == field_test_two.id,'findByBooleanField(false)');
+
+            // Identifiers that are reserved words should be quoted automatically.
+            var reserved_test = Reserved.create({
+                from: 'b',
+                select: 'c'
+            });
+            assert(Reserved.count() == 1,'Reserved.create');
+            assert(Reserved.find(reserved_test.to).from == 'b','Reserved.find');
+            assert(Reserved.findByFrom('b').select == 'c','Reserved.findByFrom');
+
+            // Identifiers must be quoted explicitly in SQL fragments.
+            assert(Reserved.find({
+              select: ['"to" + "from"', '"select"']
+            })[0].select == 'c','Reserved.find({select:...})');
+
+            // Keys of {where: {...}} properties are assumed to be column names...
+            assert(Reserved.find({
+              where: {select: 'c'}
+            })[0].select == 'c','Reserved.find({where:{...}})');
+            try {
+              // ...so that format won't work for arbitrary SQL fragments...
+              Reserved.find({
+                where: {'length("select")': 1}
+              });
+              assert(false,'Reserved.find({where:{\'length...\': 1}) throws an exception')
+            } catch (e) {
+            }
+            // ...but you can use {where: '...'} instead.
+            assert(Reserved.find({
+              where: 'length("select") = 1'
+            })[0].select == 'c','Reserved.find({where:\'length... = 1\'})');
+
+            reserved_test.set('select', 'd');
+            assert(reserved_test.select == 'd','reserved_test.set');
+            reserved_test.save();
+            assert(Reserved.find(reserved_test.to).select == 'd','reserved_test.save');
+
+            Reserved.updateAll({from: 'me'}, {select: 'd'});
+            assert(Reserved.find(reserved_test.to).from == 'me','Reserved.updateAll');
+
+            reserved_test.destroy();
+            assert(Reserved.count() == 0,'Reserved.destroy');
             
             if(proceed)
                 proceed();

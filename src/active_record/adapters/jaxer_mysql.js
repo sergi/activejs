@@ -24,28 +24,18 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  * 
  * ***** END LICENSE BLOCK ***** */
-
+ 
+(function(){
+  
 /**
  * Adapter for Jaxer configured with MySQL.
  * @alias ActiveRecord.Adapters.JaxerMySQL
  * @property {ActiveRecord.Adapter}
  */ 
-Adapters.JaxerMySQL = function JaxerMySQL(){
-    ActiveSupport.extend(this,Adapters.InstanceMethods);
-    ActiveSupport.extend(this,Adapters.MySQL);
+ActiveRecord.Adapters.JaxerMySQL = function JaxerMySQL(){
+    ActiveSupport.extend(this,ActiveRecord.Adapters.InstanceMethods);
+    ActiveSupport.extend(this,ActiveRecord.Adapters.MySQL);
     ActiveSupport.extend(this,{
-        log: function log()
-        {
-            if (!ActiveRecord.logging)
-            {
-                return;
-            }
-            if (arguments[0])
-            {
-                arguments[0] = 'ActiveRecord: ' + arguments[0];
-            }
-            return ActiveSupport.log(ActiveSupport,arguments || []);
-        },
         executeSQL: function executeSQL(sql)
         {
             ActiveRecord.connection.log("Adapters.JaxerMySQL.executeSQL: " + sql + " [" + ActiveSupport.arrayFrom(arguments).slice(1).join(',') + "]");
@@ -58,49 +48,13 @@ Adapters.JaxerMySQL = function JaxerMySQL(){
         },
         iterableFromResultSet: function iterableFromResultSet(result)
         {
-            result.iterate = function iterate(iterator)
-            {
-                if (typeof(iterator) === 'number')
-                {
-                    if (this.rows[iterator])
-                    {
-                        return ActiveSupport.clone(this.rows[iterator]);
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    for(var i = 0; i < this.rows.length; ++i)
-                    {
-                        var row = ActiveSupport.clone(this.rows[i]);
-                        delete row['$values'];
-                        iterator(row);
-                    }
-                }
-            };
+            result.iterate = ActiveRecord.Adapters.defaultResultSetIterator;
             return result;
-        },
-        transaction: function transaction(proceed)
-        {
-            try
-            {
-                ActiveRecord.connection.executeSQL('BEGIN');
-                proceed();
-                ActiveRecord.connection.executeSQL('COMMIT');
-            }
-            catch(e)
-            {
-                ActiveRecord.connection.executeSQL('ROLLBACK');
-                throw e;
-            }
         }
     });
 };
 
-Adapters.JaxerMySQL.connect = function connect(options)
+ActiveRecord.Adapters.JaxerMySQL.connect = function connect(options)
 {
     if(!options)
     {
@@ -117,5 +71,7 @@ Adapters.JaxerMySQL.connect = function connect(options)
         PASS: '',
         NAME: 'jaxer'
     },options));
-    return new Adapters.JaxerMySQL();
+    return new ActiveRecord.Adapters.JaxerMySQL();
 };
+
+})();
