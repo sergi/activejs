@@ -26,3 +26,6 @@
  * ***** END LICENSE BLOCK ***** */
 
 })();
+
+if (typeof exports != "undefined")
+    exports.ActiveRecord = ActiveRecord;
