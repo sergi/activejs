@@ -7,3 +7,4 @@ ruby build.rb
 popd
 
 cp deps/activejs/latest/active.js lib/activejs.js
+cp deps/activejs/test/test.js tests/test.js

@@ -1,5 +1,6 @@
 {
     "name": "activejs",
+    "jars": ["jars/mysql-connector-java-5.1.8-bin.jar"],
     "author": "Aptana Inc.",
     "description": "The Cross Platform JavaScript MVC, http://activejs.org/"
 }
