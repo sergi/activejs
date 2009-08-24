@@ -1,0 +1,3 @@
+[submodule "deps/activejs"]
+	path = deps/activejs
+	url = git://github.com/tlrobinson/activejs.git
