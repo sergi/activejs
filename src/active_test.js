@@ -128,3 +128,6 @@ var ActiveTest = {
 };
 
 ActiveTest.Tests = {};
+
+if (typeof exports != "undefined")
+    exports.ActiveTest = ActiveTest;

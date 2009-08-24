@@ -129,6 +129,9 @@ var ActiveTest = {
 
 ActiveTest.Tests = {};
 
+if (typeof exports != "undefined")
+    exports.ActiveTest = ActiveTest;
+
 ActiveTest.Tests.ActiveRecord = {};
 
 ActiveTest.Tests.ActiveRecord.setup = function(proceed)
