@@ -67,8 +67,19 @@ Adapters.RhinoMySQL.connect = function connect(options)
         NAME: 'test'
     }, options);
     
-    java.lang.Class.forName("com.mysql.jdbc.Driver").newInstance();
-    var conn = java.sql.DriverManager.getConnection("jdbc:mysql://"+options.HOST+":"+options.PORT+"/"+options.NAME+"?user="+options.USER+"&password="+options.PASS);
+    var url = "jdbc:mysql://"+options.HOST+":"+options.PORT+"/"+options.NAME+"?user="+options.USER+"&password="+options.PASS;
+    
+    //Packages.java.sql.DriverManager.registerDriver(new Packages.com.mysql.jdbc.Driver());
+    //Packages.java.sql.DriverManager.registerDriver(new Packages.com.mysql.jdbc.Driver.__javaObject__.newInstance());
+    
+    //Packages.java.lang.Class.forName("com.mysql.jdbc.Driver").newInstance();
+    //var conn = Packages.java.sql.DriverManager.getConnection();
+    
+    // this method seems to work best in Rhino:
+    var info = new Packages.java.util.Properties();
+    info.setProperty("user", options.USER);
+    info.setProperty("password", options.PASS);
+    var conn = new Packages.com.mysql.jdbc.Driver().connect(url, info);
     
     return new Adapters.RhinoMySQL(conn);
 };
