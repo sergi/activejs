@@ -1,0 +1,40 @@
+#!/usr/bin/env narwhal
+
+var file = require("file");
+
+var destination = file.Path(system.args[1]),
+    template = file.Path(module.path).dirname().dirname().join("templates", "app");
+    
+var CREATE      = "      create  ",
+    EXISTS      = "      exists  ",
+    IDENTICAL   = "   identical  ",
+    CONFLICT    = "    conflict  ";
+
+template.listTree().sort().forEach(function(path) {
+    var sourcePath = template.join(path),
+        destPath = destination.join(path);
+    
+    if (sourcePath.isFile()) {
+        if (destPath.exists()) {
+            if (sourcePath.read() === destPath.read()) {
+                print(IDENTICAL + path);
+            }
+            else {
+                print(CONFLICT + path);
+            }
+            return;
+        }
+        
+        print(CREATE + path);
+        destPath.dirname().mkdirs();
+        sourcePath.copy(destPath);
+    } else {
+        if (destPath.exists()) {
+            print(EXISTS + path);
+            return;
+        }
+        
+        print(CREATE + path);
+        destPath.mkdirs();
+    }
+});
